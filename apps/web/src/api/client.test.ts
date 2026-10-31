@@ -7,7 +7,8 @@ type ClientModule = typeof import('./client')
 let client: ClientModule
 
 function respond(status: number, body?: unknown) {
-  return vi.fn().mockResolvedValue(new Response(body === undefined ? null : JSON.stringify(body), { status }))
+  // 본문은 한 번만 읽을 수 있어 부를 때마다 새 Response를 만든다
+  return vi.fn(async (_url: string, _init: RequestInit) => new Response(body === undefined ? null : JSON.stringify(body), { status }))
 }
 
 beforeEach(async () => {
@@ -35,7 +36,7 @@ describe('request', () => {
     expect(init.method).toBe('POST')
     expect(init.credentials).toBe('same-origin')
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
-    expect(JSON.parse(init.body)).toEqual({ email: 'a@b.c', password: 'p' })
+    expect(JSON.parse(init.body as string)).toEqual({ email: 'a@b.c', password: 'p' })
   })
 
   it('본문 없는 요청에는 Content-Type을 붙이지 않는다', async () => {
@@ -61,6 +62,34 @@ describe('request', () => {
     await client.request('GET', '/auth/me').catch(() => undefined)
     window.removeEventListener(client.UNAUTHENTICATED_EVENT, listener)
     expect(listener).toHaveBeenCalledOnce()
+    // 처음 들어와 세션이 없던 경우라 세션 만료로 보지 않는다
+    expect(listener.mock.calls[0][0].detail).toEqual({ expired: false })
+  })
+
+  it('로그인된 응답을 받은 뒤의 401은 세션 만료로 알린다', async () => {
+    vi.stubGlobal('fetch', respond(200, { items: [] }))
+    await client.request('GET', '/domains')
+    vi.stubGlobal('fetch', respond(401, { error: { code: 'UNAUTHENTICATED', message: '다시 로그인해 주세요.' } }))
+    const listener = vi.fn()
+    window.addEventListener(client.UNAUTHENTICATED_EVENT, listener)
+    await client.request('GET', '/domains').catch(() => undefined)
+    await client.request('GET', '/domains').catch(() => undefined)
+    window.removeEventListener(client.UNAUTHENTICATED_EVENT, listener)
+    // 한 화면이 요청을 여러 개 보내 401이 여러 번 와도 모두 만료로 알린다(뒤의 것이 앞의 것을 덮어쓰므로)
+    expect(listener.mock.calls.map((c) => c[0].detail)).toEqual([{ expired: true }, { expired: true }])
+  })
+
+  it('공개 주소(/health) 응답은 세션으로 보지 않고, 로그아웃하면 세션 기록을 지운다', async () => {
+    vi.stubGlobal('fetch', respond(200, { status: 'ok' }))
+    await client.request('GET', '/health')
+    vi.stubGlobal('fetch', respond(204))
+    await client.request('POST', '/auth/logout')
+    vi.stubGlobal('fetch', respond(401, { error: { code: 'UNAUTHENTICATED', message: '다시 로그인해 주세요.' } }))
+    const listener = vi.fn()
+    window.addEventListener(client.UNAUTHENTICATED_EVENT, listener)
+    await client.request('GET', '/auth/me').catch(() => undefined)
+    window.removeEventListener(client.UNAUTHENTICATED_EVENT, listener)
+    expect(listener.mock.calls[0][0].detail).toEqual({ expired: false })
   })
 
   it('로그인 실패(401 INVALID_CREDENTIALS)는 이벤트를 알리지 않는다', async () => {
