@@ -41,6 +41,7 @@ load_env() {
   VLLM_HOST="${VLLM_HOST:-127.0.0.1}"
   VLLM_PORT="${VLLM_PORT:-8000}"
   SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3-8b}"
+  UV_VERSION="${UV_VERSION:-0.13.6}"  # 예전 .env에는 이 키가 없다
 }
 
 # BSD·GNU sed 차이를 피하려고 awk로 고친다 (target/demo.sh와 같은 방식).
@@ -104,11 +105,26 @@ cmd_preflight() {
 }
 
 ensure_uv() {
-  if command -v uv >/dev/null 2>&1; then UV=uv; return; fi
-  if [ -x "$HOME/.local/bin/uv" ]; then UV="$HOME/.local/bin/uv"; return; fi
-  log "uv 설치 (~/.local/bin, sudo 불필요)"
-  curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
+  local want="${UV_VERSION:?}" cand
+  for cand in "$(command -v uv 2>/dev/null || true)" "$HOME/.local/bin/uv"; do
+    if [ -n "$cand" ] && [ -x "$cand" ] && [ "$("$cand" --version 2>/dev/null | awk '{print $2}')" = "$want" ]; then
+      UV="$cand"; return
+    fi
+  done
+  log "uv $want 설치 (~/.local/bin, sudo 불필요)"
+  curl -LsSf "https://astral.sh/uv/$want/install.sh" | env UV_NO_MODIFY_PATH=1 sh
   UV="$HOME/.local/bin/uv"
+}
+
+# vLLM이 죽었을 때 원인 줄을 보여 준다. 진짜 원인은 EngineCore 쪽에 먼저 찍히고,
+# 마지막 줄은 APIServer의 "Engine core initialization failed"뿐이라 tail만으로는 안 보인다.
+show_failure() {
+  echo "----- 원인으로 보이는 줄 (처음 나온 오류부터) -----"
+  grep -n -E 'Error|Exception|error:|out of memory|No available memory|Traceback' "$LOG_FILE" \
+    | grep -v -E 'Engine core initialization failed|^[0-9]+:\s+File ' | head -n 25 || true
+  echo "----- 로그 마지막 15줄 -----"
+  tail -n 15 "$LOG_FILE"
+  echo "----- 전체 로그: $PWD/$LOG_FILE -----"
 }
 
 cmd_setup() {
@@ -176,7 +192,7 @@ cmd_up() {
   local waited=0
   until health_ok; do
     if ! pid_alive; then
-      echo "----- 로그 마지막 30줄 -----"; tail -n 30 "$LOG_FILE"
+      show_failure
       rm -f "$PID_FILE"
       die "vLLM이 종료됐다. README '문제 해결'을 본다"
     fi

@@ -71,7 +71,7 @@ cd ../../target
 | vLLM 0.31.0 | 모델 서빙 (OpenAI 호환 엔드포인트) | Apache 2.0 |
 | PyTorch 2.13.0 (vLLM 의존성) | 모델 실행 | BSD-3-Clause |
 | Hugging Face Hub CLI (`hf`, vLLM 의존성) | 모델 가중치 내려받기 | Apache 2.0 |
-| uv | GPU 서버 Python 가상 환경·패키지 설치 | Apache 2.0 · MIT |
+| uv 0.13.6 | GPU 서버 Python 가상 환경·패키지 설치 | Apache 2.0 · MIT |
 | FastAPI 0.115.6 · Uvicorn 0.34.0 | 피공격 서버 앱 | MIT · BSD-3-Clause |
 | cryptography 44.0.0 | 피공격 서버 시연 인증서 생성 | Apache 2.0 · BSD |
 | nginx 1.27.4 (Docker 이미지) | 피공격 서버 TLS 프록시 | BSD-2-Clause |

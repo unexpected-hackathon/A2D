@@ -142,7 +142,8 @@ def chat(client: Client, model: str, messages: list, **extra) -> tuple[dict, dic
 
 def speed(resp: dict, elapsed: float) -> str:
     tokens = resp.get("usage", {}).get("completion_tokens", 0)
-    return f"{elapsed:.1f}초, 출력 {tokens}토큰, {tokens / elapsed:.1f} tok/s" if elapsed else ""
+    rate = tokens / max(elapsed, 1e-6)
+    return f"{elapsed:.1f}초, 출력 {tokens}토큰, {rate:.1f} tok/s"
 
 
 def check_models(client: Client, model: str, rep: Report) -> None:
@@ -165,7 +166,9 @@ def check_explain(client: Client, model: str, rep: Report, thinking: bool) -> No
     msg = resp["choices"][0]["message"]
     text = msg.get("content") or ""
     reasoning = msg.get("reasoning_content") or msg.get("reasoning") or ""
-    if not text.strip():
+    if not text.strip() and reasoning.strip():
+        rep.fail(label, "답이 content가 아니라 reasoning_content로 감 → 생각 모드 끔과 reasoning parser 조합 확인")
+    elif not text.strip():
         rep.fail(label, "답이 비어 있음")
     elif "<think>" in text:
         rep.fail(label, "답에 <think>가 섞임 → reasoning parser 설정 확인")
