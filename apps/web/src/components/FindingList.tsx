@@ -6,11 +6,11 @@ import { useState } from 'react'
 import { ChipTabsCarousel, ChipTabsList, ChipTabsRoot, ChipTabsTrigger } from 'seed-design/ui/chip-tabs'
 import { ResultSection } from 'seed-design/ui/result-section'
 import type { FindingSummary, Severity } from '../api/types'
-import { findingStatusLabel, severityStyle } from '../theme/severity'
+import { SEVERITY_ORDER, findingStatusLabel, severityStyle } from '../theme/severity'
 import { ConfidenceBadge, SeverityBadge } from './Badges'
 import { Surface } from './Surface'
 
-const FILTERS: ('all' | Severity)[] = ['all', 'critical', 'high', 'medium', 'low']
+const FILTERS: ('all' | Severity)[] = ['all', ...SEVERITY_ORDER]
 
 interface FindingListProps {
   findings: FindingSummary[]

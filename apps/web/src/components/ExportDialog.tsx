@@ -12,16 +12,14 @@ import { createPortal } from 'react-dom'
 import { ActionButton } from 'seed-design/ui/action-button'
 import { Callout } from 'seed-design/ui/callout'
 import { DialogBody, DialogContent, DialogFooter, DialogRoot, DialogTrigger } from 'seed-design/ui/dialog'
-import type { Severity, Summary } from '../api/types'
+import type { Summary } from '../api/types'
 import { api } from '../api/endpoints'
 import logoUrl from '../assets/a2d-logo.svg'
 import { useApi } from '../hooks/useApi'
 import { formatDateTime } from '../lib/format'
-import { severityStyle } from '../theme/severity'
 import { GradeBadge } from './Badges'
 import { ScoreGauge } from './ScoreGauge'
-
-const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low']
+import { SeverityCounts } from './SeverityCounts'
 
 export function ExportDialog({ domainId }: { domainId: string }) {
   const [open, setOpen] = useState(false)
@@ -115,18 +113,7 @@ function OnePager({ s }: { s: Summary }) {
         <Text textStyle="t4Bold" color="fg.neutral">
           등급별 발견 수
         </Text>
-        <div className="a2d-counts">
-          {SEVERITY_ORDER.map((sev) => (
-            <VStack key={sev} gap="x0_5" px="x3" py="x2" borderRadius="r3" bg="bg.neutralWeak">
-              <Text textStyle="t2Medium" color="fg.neutralSubtle">
-                {severityStyle[sev].label}
-              </Text>
-              <Text textStyle="t6Bold" color={s.counts[sev] ? 'fg.neutral' : 'fg.neutralSubtle'}>
-                {s.counts[sev]}
-              </Text>
-            </VStack>
-          ))}
-        </div>
+        <SeverityCounts counts={s.counts} />
       </VStack>
 
       <Text textStyle="t2Regular" color="fg.neutralSubtle">

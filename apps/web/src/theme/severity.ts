@@ -21,6 +21,19 @@ export const gradeStyle: Record<Grade, { tone: Tone; caption: string }> = {
   F: { tone: 'critical', caption: '위험' },
 }
 
+// 안전 점수의 등급 구간(A 90+ / B 72+ / C 58+ / D 44+ / F). 점수 추이 그래프와 게이지가 함께 쓴다.
+// 띠 색은 gradeStyle의 tone에서 가져온다: var(--seed-color-bg-{tone}-weak)
+export const GRADE_BANDS: { grade: Grade; from: number; to: number }[] = [
+  { grade: 'F', from: 0, to: 44 },
+  { grade: 'D', from: 44, to: 58 },
+  { grade: 'C', from: 58, to: 72 },
+  { grade: 'B', from: 72, to: 90 },
+  { grade: 'A', from: 90, to: 100 },
+]
+
+// 발견 등급을 보여 주는 순서(참고 정보는 개수에 넣지 않는다).
+export const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low']
+
 // 확실성은 같은 색에서 표시 방식만 바꾼다: 진하게 → 옅게 → 테두리만.
 export const confidenceStyle: Record<
   Confidence,

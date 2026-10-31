@@ -127,8 +127,12 @@ body {
 .a2d-gauge-track {
   position: relative;
   height: 20px;
+}
+.a2d-gauge-bands {
+  position: absolute;
+  inset: 0;
   border-radius: 999px;
-  overflow: visible;
+  overflow: hidden;
 }
 .a2d-gauge-band {
   position: absolute;
@@ -141,8 +145,6 @@ body {
   font-weight: 700;
   color: var(--seed-color-fg-neutral-subtle);
 }
-.a2d-gauge-band:first-child { border-radius: 999px 0 0 999px; }
-.a2d-gauge-band:last-of-type { border-radius: 0 999px 999px 0; }
 .a2d-gauge-dot {
   position: absolute;
   top: 50%;

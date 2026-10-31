@@ -7,10 +7,11 @@ import { motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import AnimateNumber from 'seed-design/breeze/animate-number/animate-number'
 import { ActionButton } from 'seed-design/ui/action-button'
-import type { Severity, Summary } from '../api/types'
+import type { Summary } from '../api/types'
 import { formatDateTime } from '../lib/format'
-import { gradeStyle, severityStyle } from '../theme/severity'
+import { gradeStyle } from '../theme/severity'
 import { GradeBadge } from './Badges'
+import { SeverityCounts } from './SeverityCounts'
 import { Surface } from './Surface'
 
 // SEED 상태 색(tone) → 게이지 선 색
@@ -24,7 +25,6 @@ const TONE_COLOR: Record<string, string> = {
 const SIZE = 168
 const STROKE = 14
 const R = (SIZE - STROKE) / 2
-const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low']
 
 interface ScoreCardProps {
   summary: Summary
@@ -87,18 +87,7 @@ export function ScoreCard({ summary, onRescan, scanning }: ScoreCardProps) {
 
           <VStack gap="x3" className="a2d-score-text">
             {/* 등급별 발견 수 */}
-            <div className="a2d-counts">
-              {SEVERITY_ORDER.map((s) => (
-                <VStack key={s} gap="x0_5" px="x3" py="x2" borderRadius="r3" bg="bg.neutralWeak">
-                  <Text textStyle="t2Medium" color="fg.neutralSubtle">
-                    {severityStyle[s].label}
-                  </Text>
-                  <Text textStyle="t6Bold" color={summary.counts[s] ? 'fg.neutral' : 'fg.neutralSubtle'}>
-                    {summary.counts[s]}
-                  </Text>
-                </VStack>
-              ))}
-            </div>
+            <SeverityCounts counts={summary.counts} />
           </VStack>
         </div>
 
