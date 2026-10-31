@@ -105,7 +105,75 @@ body {
   outline-offset: 2px;
 }
 
-/* 한 장 요약(/export) 인쇄: 버튼을 숨기고 A4 한 장에 맞춘다. */
+/* ---------- 한 장 요약 (ExportDialog) ----------
+ * 0~100 가로 게이지: 등급 구간 띠 위에 현재 점수 점, 위에 점수 글자, 아래에 구간 경계 눈금. */
+/* SEED Dialog가 word-break: break-all이라 한글이 낱자로 끊긴다. 요약 안에서는 단어 단위로 끊는다. */
+.a2d-onepager {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.a2d-gauge {
+  position: relative;
+  padding-top: 24px;
+}
+.a2d-gauge-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--seed-color-fg-neutral);
+}
+.a2d-gauge-track {
+  position: relative;
+  height: 20px;
+  border-radius: 999px;
+  overflow: visible;
+}
+.a2d-gauge-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--seed-color-fg-neutral-subtle);
+}
+.a2d-gauge-band:first-child { border-radius: 999px 0 0 999px; }
+.a2d-gauge-band:last-of-type { border-radius: 0 999px 999px 0; }
+.a2d-gauge-dot {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid var(--seed-color-bg-layer-default);
+  box-shadow: 0 0 0 1px var(--seed-color-stroke-neutral-subtle);
+  transform: translate(-50%, -50%);
+}
+.a2d-gauge-ticks {
+  position: relative;
+  height: 18px;
+  margin-top: 4px;
+}
+.a2d-gauge-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--seed-color-fg-neutral-subtle);
+}
+.a2d-gauge-ticks span:first-child { transform: none; }
+.a2d-gauge-ticks span:last-child { transform: translateX(-100%); }
+
+/* 인쇄용 한 벌은 화면에서 숨기고, 인쇄할 때는 그것만 남긴다. */
+.a2d-print-only {
+  display: none;
+}
+
 @media print {
   @page {
     size: A4;
@@ -114,13 +182,13 @@ body {
   body {
     background: #fff;
   }
-  .a2d-no-print {
+  body:has(> .a2d-print-only) > :not(.a2d-print-only) {
     display: none !important;
   }
-  .a2d-page {
-    box-shadow: none !important;
-    max-width: none !important;
-    padding: 0 !important;
+  .a2d-print-only {
+    display: block;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 

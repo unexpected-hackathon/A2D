@@ -4,19 +4,17 @@
 //   1) GET /domains/{id}/history → 점수 추이 그래프(4-1)와 점검 목록(4-2)
 //   2) 점검을 고르면(기본: 가장 최근) GET /scans/{id}/changes(4-3), GET /scans/{id}/audit(4-4)
 //   3) 재점검이 끝나면(useScan().finishedVersion) 1)을 다시 부르고 새 점검을 고른다
-//   4) "한 장 요약 내보내기"(4-5) → /export 인쇄용 화면
+//   4) "한 장 요약 내보내기"(4-5) → 모달(ExportDialog)에서 인쇄
 
-import { IconDocumentArrowLeftLine } from '@karrotmarket/react-monochrome-icon'
-import { HStack, PrefixIcon, Skeleton, Text, VStack } from '@seed-design/react'
+import { HStack, Skeleton, Text, VStack } from '@seed-design/react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ActionButton } from 'seed-design/ui/action-button'
 import { Badge } from 'seed-design/ui/badge'
 import { Callout } from 'seed-design/ui/callout'
 import { ResultSection } from 'seed-design/ui/result-section'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'seed-design/ui/tabs'
 import { api } from '../api/endpoints'
 import { AuditLog } from '../components/AuditLog'
+import { ExportDialog } from '../components/ExportDialog'
 import { GradeBadge } from '../components/Badges'
 import { PageHeader } from '../components/PageHeader'
 import { ScanChanges } from '../components/ScanChanges'
@@ -35,7 +33,6 @@ export function HistoryPage() {
 }
 
 function History({ domainId }: { domainId: string }) {
-  const navigate = useNavigate()
   const scan = useScan()
   const history = useApi(() => api.domains.history(domainId), [domainId, scan.finishedVersion])
   const items = history.data?.items ?? []
@@ -52,11 +49,7 @@ function History({ domainId }: { domainId: string }) {
       <PageHeader
         eyebrow="기록"
         title="점검할수록 안전해지는 기록"
-        actions={
-          <ActionButton variant="neutralWeak" onClick={() => navigate('/export')}>
-            <PrefixIcon svg={<IconDocumentArrowLeftLine />} />한 장 요약 내보내기
-          </ActionButton>
-        }
+        actions={<ExportDialog domainId={domainId} />}
       />
 
       {history.error && <Callout tone="critical" description={history.error.message} />}
