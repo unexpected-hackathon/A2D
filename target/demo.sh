@@ -97,7 +97,7 @@ check() {
   local d; d="$(get_var DEMO_DOMAIN)"
   docker run --rm --network a2d-demo --dns "$(get_var DNS_IP)" curlimages/curl:8.11.1 sh -c "
     for u in https://$d/ https://www.$d/.env https://www.$d/backup.zip https://api.$d/api/v1/applicants/1 \
-             https://api.$d/swagger https://admin.$d/ http://www.$d/; do
+             https://www.$d/internal/reports/export https://api.$d/swagger https://admin.$d/ http://www.$d/; do
       printf '%-48s ' \"\$u\"; curl -sk -o /dev/null -w '%{http_code}\n' \"\$u\"
     done"
 }

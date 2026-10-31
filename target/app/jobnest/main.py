@@ -108,6 +108,17 @@ async def www_actuator_env(request: Request):
     return Response(pages.actuator_env(), media_type="application/json")
 
 
+async def www_internal_export(request: Request):
+    """#16 숨은 경로: 사내 보고서용 지원자 내보내기. robots.txt(Disallow: /internal/reports/)와
+    소스맵 주석에만 나오고 화면·API 문서에는 없다. 기본 점검은 이 경로를 모르고, 추가 점검(Attack 에이전트)이
+    robots.txt 단서를 따라가야 찾는다. #16을 고치면 /api/v1/applicants와 함께 막힌다(같은 조치)."""
+    if c.fixed(16):
+        return need_auth()
+    rows = [{k: a[k] for k in ("id", "name", "email", "phone", "desired_job")} for a in APPLICANTS]
+    return JSONResponse({"report": "applicants_export", "generated_by": "nightly-batch",
+                         "count": len(rows), "rows": rows})
+
+
 async def admin_page(request: Request):
     if c.fixed(18):
         return blocked()
@@ -139,6 +150,7 @@ www = Starlette(
         Route("/actuator/env", www_actuator_env),
         Route("/admin", admin_page),
         Route("/admin/", admin_page),
+        Route("/internal/reports/export", www_internal_export),
     ],
     exception_handlers=HANDLERS,
 )
