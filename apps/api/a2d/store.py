@@ -93,14 +93,15 @@ class Store:
     def save_domain(self, data: dict) -> None:
         self._q("UPDATE domains SET data = ? WHERE domain_id = ?", (_dump(data), data["domain_id"]))
 
-    # ------------------------------------------------------------ 자산 ID (점검이 바뀌어도 유지)
+    # ------------------------------------------------------------ 자산 ID
+    # 같은 도메인·호스트면 점검이 바뀌어도 유지하고, 에이전트 도구가 asset_id만 받으므로 서버 전체에서 유일하게 매긴다.
 
     def asset_id_for(self, domain_id: str, host: str) -> str:
         with self._lock:
             row = self._q("SELECT asset_id FROM assets WHERE domain_id = ? AND host = ?", (domain_id, host))
             if row:
                 return row[0][0]
-            n = self.next_seq(f"asset:{domain_id}")
+            n = self.next_seq("asset")
             asset_id = f"A-{n:03d}"
             self._db.execute(
                 "INSERT INTO assets (domain_id, host, asset_id) VALUES (?, ?, ?)", (domain_id, host, asset_id)

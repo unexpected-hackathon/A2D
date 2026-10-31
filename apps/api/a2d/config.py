@@ -83,7 +83,7 @@ class Settings:
             admin_password=os.environ.get("A2D_ADMIN_PASSWORD", ""),
             admin_name=os.environ.get("A2D_ADMIN_NAME", "IT 담당자"),
             db_path=os.environ.get("A2D_DB_PATH", str(API_ROOT / "data" / "a2d.sqlite3")),
-            web_origins=_list("A2D_WEB_ORIGIN", "http://localhost:5173,http://127.0.0.1:5173"),
+            web_origins=_list("A2D_WEB_ORIGIN", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"),
             secure_cookie=_bool("A2D_SECURE_COOKIE"),
             expose_openapi=_bool("A2D_EXPOSE_OPENAPI"),
             verify_mode=os.environ.get("A2D_VERIFY_MODE", "dns").strip().lower(),

@@ -11,9 +11,10 @@ services:
         required: true
     environment:
       A2D_DB_PATH: /srv/data/a2d.sqlite3
-      A2D_DNS_SERVER: ${A2D_DNS_SERVER:-10.253.53.53}
+      # .env의 A2D_DNS_SERVER는 노트북 직접 실행용이라 컨테이너에서는 이 값으로 덮는다
+      A2D_DNS_SERVER: ${A2D_DEMO_DNS_IP:-10.253.53.53}
     dns:
-      - ${A2D_DNS_SERVER:-10.253.53.53}
+      - ${A2D_DEMO_DNS_IP:-10.253.53.53}
     volumes:
       - data:/srv/data
     networks:

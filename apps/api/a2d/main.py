@@ -9,6 +9,7 @@ import importlib
 import json
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -117,8 +118,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     def require_login(request: Request) -> None:
         if request.url.path in PUBLIC:
             return
-        if request.app.state.auth.touch(request.cookies.get(COOKIE)) is None:
+        sess = request.app.state.auth.touch(request.cookies.get(COOKIE))
+        if sess is None:
             raise unauthenticated()
+        request.state.session = sess
 
     r = APIRouter(prefix=PREFIX, dependencies=[Depends(require_login)])
 
@@ -145,8 +148,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @r.get("/auth/me")
     async def me(request: Request):
-        auth: Auth = request.app.state.auth
-        return auth.session_body(auth.touch(request.cookies.get(COOKIE)))
+        return request.app.state.auth.session_body(request.state.session)
 
     # ------------------------------------------------------------ 공통·도메인
 

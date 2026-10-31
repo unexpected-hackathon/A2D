@@ -40,6 +40,7 @@ class Auth:
         self.s = settings
         if not settings.admin_email or not settings.admin_password:
             raise RuntimeError("A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD를 .env에 넣어 주세요.")
+        self._email = settings.admin_email.strip().lower()  # 입력값과 같은 규칙으로 맞춘다
         self._hash = bcrypt.hashpw(settings.admin_password.encode(), bcrypt.gensalt())
         self._sessions: dict[str, Session] = {}
         self._fails: dict[str, tuple[int, float]] = {}  # ip → (연속 실패 수, 잠금 해제 시각)
@@ -48,7 +49,7 @@ class Auth:
     # ------------------------------------------------------------ 사용자
 
     def user(self) -> dict:
-        return {"user_id": USER_ID, "email": self.s.admin_email, "name": self.s.admin_name}
+        return {"user_id": USER_ID, "email": self._email, "name": self.s.admin_name}
 
     def session_body(self, sess: Session) -> dict:
         exp = dt.datetime.fromtimestamp(sess.expires_at(), tz=now().tzinfo)
@@ -62,7 +63,7 @@ class Auth:
             fails, until = self._fails.get(ip, (0, 0.0))
             if until > t:
                 raise ApiError(429, "TOO_MANY_ATTEMPTS", "로그인을 5회 연속 실패했습니다. 5분 뒤 다시 시도해 주세요.")
-        ok_email = secrets.compare_digest(email.strip().lower().encode(), self.s.admin_email.encode())
+        ok_email = secrets.compare_digest(email.strip().lower().encode(), self._email.encode())
         ok_pw = bcrypt.checkpw(password.encode(), self._hash)  # 이메일이 틀려도 같은 시간을 쓴다
         with self._lock:
             if not (ok_email and ok_pw):

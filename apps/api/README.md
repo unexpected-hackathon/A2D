@@ -26,7 +26,8 @@ cp .env.example .env        # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD를 채운다
 ```
 
 - 화면 개발 서버는 `/api`를 `http://127.0.0.1:8000`으로 프록시해 같은 출처로 띄운다(API 명세 3장). CORS는 열지 않는다.
-- POST·PATCH는 `Origin`이 `A2D_WEB_ORIGIN`에 있어야 한다. curl로 부를 때는 `-H "Origin: http://localhost:5173"`을 붙인다.
+- POST·PATCH는 `Origin`이 `A2D_WEB_ORIGIN`에 있어야 한다. 화면을 연 주소(포트 포함, 예: `http://localhost:4173`)를 그대로 넣어야 하고, 없으면 로그인부터 `403`이다. curl로 부를 때는 `-H "Origin: http://localhost:5173"`을 붙인다.
+- 화면 개발 서버 프록시를 거치면 요청 IP가 모두 `127.0.0.1`이라, 로그인 5회 실패 잠금이 화면 전체에 걸린다. 시연 계정이 하나라 그대로 둔다.
 - 화면만 개발할 때는 `.env`에 `A2D_VERIFY_MODE=trust`를 두면 TXT 조회 없이 소유권 확인이 통과한다. 시연에서는 `dns`로 둔다.
 
 ### 시연 환경(target)과 함께
@@ -78,3 +79,6 @@ a2d/
 - 본문 없는 POST(`/verify`, `/scans`, `/stop`, `/logout`)는 `Content-Type`을 보지 않는다. 본문이 있으면 `application/json`만 받는다.
 - `GET /scans/{scan_id}/findings`의 `resolved`(해결됨)는 이번 점검에 없고 직전 점검에 있던 발견이다. `status=resolved`로 요청할 때만 목록에 들어간다.
 - 질의응답은 끝난 점검에만 받는다(`409 SCAN_NOT_FINISHED`).
+- 기본 점검을 끝내지 못한 점검(중지·제한 시간 초과)은 `stopped`이고, 다시 보지 못한 직전 자산·발견을 그대로 이어받는다. 그래서 확인하지 못한 것이 해결됨·사라짐으로 나오지 않는다. 시간 초과면 `stage.name`이 "중지됨 (제한 시간 초과)"다.
+- `POST /scans/{id}/stop`은 최대 1초만 기다린다. 그 안에 멈추지 않으면 진행 중 상태를 돌려주고, 화면은 폴링을 이어 가 `stopped`를 받는다.
+- 자산 ID는 서버 전체에서 유일하다(에이전트 도구가 `asset_id`만 받기 때문). 같은 도메인·호스트면 점검이 바뀌어도 유지한다.
