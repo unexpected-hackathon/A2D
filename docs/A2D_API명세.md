@@ -280,13 +280,23 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
   "finished_at": null,
   "safety_score": null,
   "grade": null,
-  "error_message": null
+  "error_message": null,
+  "attack": { "status": "pending", "reason": null, "message": null }
 }
 ```
 
 - `stage.name`은 화면에 그대로 보여 줄 한국어다.
 - `safety_score`와 `grade`는 `scoring` 단계가 끝나면 채워진다.
 - `failed`이면 `error_message`에 이유가 온다.
+- `attack`은 추가 점검(Attack 에이전트, FR-04)의 상태다. 이 필드가 생기기 전의 점검은 `null`이다.
+  - `status`: `pending`(기본 점검 중) · `running` · `done` · `skipped`(건너뜀) · `failed` · `stopped`
+  - `reason`: 건너뛰었거나 일부만 했을 때의 원인. `llm_not_configured`(LLM 주소 없음) · `llm_unavailable`(첫 LLM 요청부터 실패) · `fixture_engine`(시연용 가짜 엔진) · `no_handlers` · `llm_interrupted`(도구를 부르다 LLM이 끊김, `status`는 `done`) · `error`(`status`는 `failed`). 기본 점검을 끝내지 못해 추가 점검까지 가지 못했으면 `skipped`이고 `reason`은 `null`이다.
+  - `message`: 화면에 그대로 보여 줄 한국어. `reason`이 없으면 `null`. 시연 화면에 나가므로 `fixture_engine`이어도 원인을 쓰지 않는다.
+
+```json
+{ "status": "skipped", "reason": "llm_not_configured",
+  "message": "AI 서버가 연결되지 않아 추가 점검을 건너뛰었습니다. 기본 점검 결과로 점수를 냈습니다." }
+```
 
 ### POST `/scans/{scan_id}/stop`
 
@@ -301,6 +311,7 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 ### GET `/domains/{domain_id}/summary`
 
 대시보드 첫 화면에 필요한 것을 한 번에 내려준다. 가장 최근에 끝난 점검 기준이다. 아직 끝난 점검이 없으면 `latest_scan`이 `null`이다.
+`latest_scan.attack`은 그 점검의 `GET /scans/{scan_id}` `attack`과 같다. 화면은 `status`가 `skipped`이거나 `message`가 있으면 그 문장을 한 줄로 보여 준다.
 
 ```json
 {
@@ -309,7 +320,8 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
   "latest_scan": {
     "scan_id": "S-0001",
     "finished_at": "2026-10-31T14:07:40+09:00",
-    "status": "done"
+    "status": "done",
+    "attack": { "status": "done", "reason": null, "message": null }
   },
   "running_scan_id": null,
   "safety_score": 12,
