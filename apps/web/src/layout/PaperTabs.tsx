@@ -31,7 +31,7 @@ interface PaperTabsProps {
 
 const UNIT = 100 // 종이 한 칸의 폭(viewBox 단위)
 const LENGTH = 1000 // 종이 길이(viewBox 단위)
-const AMP = 9 // 물결 높이
+const AMP = 7 // 물결 높이
 const SAMPLES = 32
 
 // 경계선 위의 점들. phase를 바꾸면 물결이 옆으로 흐르는 것처럼 보인다.
@@ -39,8 +39,8 @@ function wave(edge: number, phase: number, i: number) {
   const pts: [number, number][] = []
   for (let s = 0; s <= SAMPLES; s++) {
     const t = s / SAMPLES
-    // 종이마다 물결 주기를 조금씩 달리해 손으로 그린 느낌을 낸다.
-    const offset = AMP * Math.sin(t * Math.PI * (2.2 + i * 0.35) + phase + i * 1.3)
+    // 굽이 하나짜리 완만한 곡선. 종이마다 위상을 달리해 서로 다른 모양으로 보인다.
+    const offset = AMP * Math.sin(t * Math.PI * 1.15 + phase + i * 1.1)
     pts.push([edge + offset, t * LENGTH])
   }
   return pts
@@ -82,7 +82,7 @@ export function PaperTabs({ tabs, activeKey, orientation, onSelect }: PaperTabsP
                 <animate
                   attributeName="d"
                   values={`${d0};${d1};${d0}`}
-                  dur={`${6 + i * 1.5}s`}
+                  dur={`${9 + i * 2}s`}
                   repeatCount="indefinite"
                   calcMode="spline"
                   keySplines="0.45 0 0.55 1;0.45 0 0.55 1"

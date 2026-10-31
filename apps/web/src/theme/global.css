@@ -367,7 +367,8 @@ body {
   border-radius: 28px;
   /* hidden은 sticky(띠 글자 따라오기)를 막는다. clip은 모서리만 자르고 스크롤 기준을 바꾸지 않는다 */
   overflow: clip;
-  background: var(--a2d-sheet);
+  /* 종이 띠와 내용 영역 사이의 좁은 틈. 고른 종이 색으로 두어 종이가 내용 영역으로 이어져 보인다 */
+  background: var(--a2d-folder-bg, var(--a2d-sheet));
   box-shadow: 0 1px 2px rgb(16 32 47 / 0.06), 0 12px 32px rgb(16 32 47 / 0.08);
 }
 .a2d-folder[data-orientation="horizontal"] {
@@ -378,6 +379,9 @@ body {
 .a2d-sheet {
   container: sheet / inline-size;
   position: relative;
+  /* 색을 쓸고 지나가는 덮개가 왼쪽 종이 위로 나가지 않게 여기서 자른다 */
+  overflow: clip;
+  isolation: isolate;
   min-width: 0;
   padding: 32px 40px 40px;
   color: var(--a2d-ink, var(--seed-color-fg-neutral));

@@ -165,7 +165,11 @@ function Shell() {
           <UserMenu />
         </header>
 
-        <div className="a2d-folder" data-orientation={horizontal ? 'horizontal' : 'vertical'}>
+        <div
+          className="a2d-folder"
+          data-orientation={horizontal ? 'horizontal' : 'vertical'}
+          style={{ '--a2d-folder-bg': paper.fill } as CSSProperties}
+        >
           <PaperTabs
             tabs={PAPERS}
             activeKey={active}

@@ -13,7 +13,7 @@ import { useState } from 'react'
 const W = 1000
 const H = 1000
 const EDGE = 950 // 물결의 평균 위치 (0~1000)
-const AMP = 28
+const AMP = 22
 
 // 오른쪽 끝이 물결인 직사각형. phase를 바꾸면 물결이 흔들린다.
 function washPath(phase: number) {
@@ -21,7 +21,7 @@ function washPath(phase: number) {
   const n = 24
   for (let i = 0; i <= n; i++) {
     const t = i / n
-    const x = EDGE + AMP * Math.sin(t * Math.PI * 3 + phase)
+    const x = EDGE + AMP * Math.sin(t * Math.PI * 1.6 + phase)
     pts.push(`L${x.toFixed(1)},${(t * H).toFixed(1)}`)
   }
   return `M0,0 L${EDGE},0 ${pts.join(' ')} L0,${H} Z`
