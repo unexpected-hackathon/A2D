@@ -30,8 +30,18 @@ jobnest-resumes.s3.ap-northeast-2.amazonaws.com:53 {
     errors
 }
 
-# 나머지 이름은 Docker 기본 DNS로 넘긴다(오프라인이면 실패해도 된다).
-.:53 {
+# Docker Desktop이 주는 이름(host.docker.internal 등, LLM 터널 주소)은 Docker 기본 DNS로 넘긴다.
+docker.internal:53 {
     forward . /etc/resolv.conf
+    errors
+}
+
+# 나머지 이름(실제 도메인)은 공용 DNS에 바로 묻는다. Docker 기본 DNS를 거치면 Docker Desktop이
+# 오래된 답(지운 TXT, 없던 레코드)을 TTL 동안 쥐고 있어, 고친 뒤 재점검해도 반영되지 않는다.
+# 오프라인이면 실패해도 된다(jobnest.test 시연은 위 블록이 답한다).
+.:53 {
+    forward . 1.1.1.1 8.8.8.8 {
+        policy sequential
+    }
     errors
 }
