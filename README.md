@@ -27,7 +27,7 @@
 | [docs/A2D_상세설계.md](docs/A2D_상세설계.md) | 점검 구현 범위·안전 제한 요약, LLM 선택, Python 함수 도구 호출 설계 |
 | [docs/A2D_점검점수설계.md](docs/A2D_점검점수설계.md) | 비침습 점검 항목 34개(1차 29개), 위험·안전 점수 계산식, 항목별 기본값, 시나리오 검증 |
 | [docs/A2D_PRD.md](docs/A2D_PRD.md) | 기능 FR-01~16, 화면, AI, 비기능, 범위 밖, 마일스톤 |
-| [docs/A2D_API명세.md](docs/A2D_API명세.md) | 프런트엔드가 쓰는 백엔드 HTTP API: 엔드포인트 21개(세션 로그인 포함), 요청·응답 예시, 화면별 호출 순서 |
+| [docs/A2D_API명세.md](docs/A2D_API명세.md) | 프런트엔드가 쓰는 백엔드 HTTP API: 엔드포인트 22개(세션 로그인 포함), 요청·응답 예시, 화면별 호출 순서 |
 | [docs/A2D_정보구조도.md](docs/A2D_정보구조도.md) | 로그인과 화면 4개의 구역·이동 경로·구역별 API, 사용자 흐름, 화면 상태와 용어 |
 | [docs/research/A2D_도메인선정_근거검증_사례28건.md](docs/research/A2D_도메인선정_근거검증_사례28건.md) | 채용·인재 매칭 플랫폼을 주 타깃으로 선정한 근거와 사고 사례 28건 |
 | [docs/research/A2D_채용플랫폼_필요점검리스트.md](docs/research/A2D_채용플랫폼_필요점검리스트.md) | 채용 플랫폼 우선 점검 항목, 안전 조건, 구현 순서 |
@@ -39,7 +39,27 @@
 
 ## 실행 방법
 
-각 디렉터리의 README에 적는다. 기술 스택이 정해지면 여기에 전체 시연 환경을 띄우는 순서를 정리한다.
+시연 환경은 한 노트북에서 피공격 서버(`target/`)와 A2D 백엔드(`apps/api/`)를 Docker로 띄운다. Docker와 Docker Compose v2가 필요하고, 인터넷은 처음 이미지를 받을 때만 쓴다. 자세한 설정은 각 디렉터리의 README를 본다.
+
+```bash
+# 1. 피공격 서버: 결함을 심은 가상 채용 플랫폼(127.0.0.1에만 열린다)
+cd target
+./demo.sh up
+./demo.sh preset demo        # 기본 시연 결함 #16 #8 #18만 켠다
+
+# 2. A2D 백엔드: 시연 네트워크(a2d-demo)에 붙고 시연 DNS로 소유권을 확인한다
+cd ../apps/api
+cp .env.example .env         # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD를 채운다
+docker compose up -d --build # http://127.0.0.1:8000/api/v1
+
+# 3. 화면: apps/web/README.md 순서로 띄우고, 화면을 연 주소를 .env의 A2D_WEB_ORIGIN에 넣는다
+
+# 4. 등록 화면이 준 TXT 값을 시연 DNS에 넣고 화면에서 "확인"을 누른다
+cd ../../target
+./demo.sh verify a2d-verify=<값>
+```
+
+시연 순서(점검 → 조치 → 재점검 → 새 서버 감시)와 단계별 명령은 [target/README.md](target/README.md) "시연 순서"에 있다. 내릴 때는 `apps/api`에서 `docker compose down`, `target`에서 `./demo.sh down`을 실행한다.
 
 ## 외부 자원
 
@@ -55,3 +75,8 @@
 | CoreDNS 1.11.3 (Docker 이미지) | 피공격 서버 시연 DNS | Apache 2.0 |
 | Python 3.12 slim (Docker 이미지) | 피공격 서버 실행 환경 | PSF |
 | curl 8.11.1 (Docker 이미지) | 피공격 서버 응답 확인(`demo.sh check`) | curl 라이선스(MIT 계열) |
+| FastAPI 0.115.6 · Uvicorn 0.34.0 | A2D 백엔드 API | MIT · BSD-3-Clause |
+| httpx 0.28.1 | A2D 백엔드 LLM 상태 확인 | BSD-3-Clause |
+| dnspython 2.7.0 | A2D 백엔드 DNS TXT 소유권 확인 | ISC |
+| bcrypt 4.2.1 | A2D 백엔드 비밀번호 해시 | Apache 2.0 |
+| pytest 8.3.4 | A2D 백엔드 테스트 | MIT |
