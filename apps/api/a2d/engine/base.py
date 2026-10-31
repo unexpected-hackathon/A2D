@@ -19,6 +19,13 @@ class ScanStopped(Exception):
     """중지 요청 또는 제한 시간 초과. 엔진은 잡지 말고 그대로 올려 보낸다."""
 
 
+class EngineError(Exception):
+    """점검을 끝낼 수 없음(DNS 무응답, 대상에 연결 불가 등). 점검은 실패로 끝나고 메시지가 화면에 그대로 보인다.
+
+    발견 0건은 100점(A)이 되므로, 아무것도 보지 못한 점검을 '문제 없음'으로 끝내지 않으려고 쓴다.
+    """
+
+
 @dataclass
 class Budget:
     requests_limit: int
