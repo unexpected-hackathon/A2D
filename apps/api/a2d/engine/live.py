@@ -828,13 +828,6 @@ def _is_sourcemap(r: Fetched) -> bool:
     return isinstance(obj, dict) and bool({"mappings", "sources", "sourcesContent"} & set(obj))
 
 
-def _is_html(r: Fetched) -> bool:
-    if "html" in (r.header("content-type") or ""):
-        return True
-    head = r.text[:256].lstrip().lower()
-    return head.startswith("<!doctype html") or head.startswith("<html")
-
-
 def _pii_shape(r: Fetched) -> tuple[list[str], int | None]:
     """응답이 개인정보 형태인지(#16). JSON 응답만 본다. HTML(푸터 메일 등)은 API 응답으로 보지 않는다.
 
