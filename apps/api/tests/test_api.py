@@ -300,3 +300,30 @@ def test_attack_skipped_on_fixture_engine_hides_cause(tmp_path):
     attack = body["attack"]
     assert attack["status"] == "skipped" and attack["reason"] == "fixture_engine"
     assert "가짜" not in attack["message"] and "fixture" not in attack["message"]
+
+
+# ------------------------------------------------------------------ trust는 예약 도메인만
+
+def test_trust_mode_skips_txt_only_for_reserved_tlds(client, monkeypatch):
+    """A2D_VERIFY_MODE=trust여도 실제 도메인은 TXT로 확인한다. 실제 엔진이 남의 사이트를 점검하지 않게 한다."""
+    from a2d.service import Service
+
+    looked: list[str] = []
+
+    async def no_txt(self, name):
+        looked.append(name)
+        return []
+
+    monkeypatch.setattr(Service, "_lookup_txt", no_txt)
+    login(client)
+    for name in ("jobnest.test", "shop.example", "a.invalid", "app.localhost"):
+        d = client.post("/api/v1/domains", json={"domain": name}).json()
+        assert client.post(f"/api/v1/domains/{d['domain_id']}/verify").json()["verify_status"] == "verified"
+    assert looked == []  # 예약 도메인은 TXT를 조회하지 않는다
+
+    for name in ("jobnest.com", "test.co.kr", "mytest.io"):
+        d = client.post("/api/v1/domains", json={"domain": name}).json()
+        body = client.post(f"/api/v1/domains/{d['domain_id']}/verify").json()
+        assert body["verify_status"] == "failed" and "TXT 레코드를 찾지 못했습니다" in body["reason"]
+        assert client.post(f"/api/v1/domains/{d['domain_id']}/scans").status_code == 409
+    assert looked == ["_a2d-verify.jobnest.com", "_a2d-verify.test.co.kr", "_a2d-verify.mytest.io"]

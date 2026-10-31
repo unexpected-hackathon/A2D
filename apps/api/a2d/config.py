@@ -59,7 +59,8 @@ class Settings:
     # 1이면 /api/v1/openapi.json·/api/v1/docs를 연다. A2D 자신이 #17에 걸리므로 시연 환경 밖에서는 끈다
     expose_openapi: bool = False
 
-    # 소유권 확인(FR-01). dns = TXT 레코드 조회, trust = 조회 없이 통과(화면 개발용, 또는 TXT 장면을 뺀 시연)
+    # 소유권 확인(FR-01). dns = TXT 레코드 조회, trust = 예약 도메인(.test·.example·.invalid·.localhost)만
+    # 조회 없이 통과(화면 개발용, 또는 TXT 장면을 뺀 시연). 실제 도메인은 trust에서도 TXT로 확인한다(service.TRUST_TLDS)
     verify_mode: str = "dns"
     # 점검 DNS. 소유권 확인·자산 찾기·점검 HTTP·TLS 접속이 모두 이 DNS로 주소를 찾는다.
     # 비우면 시스템 DNS. 예: 10.253.53.53, 127.0.0.1:15353

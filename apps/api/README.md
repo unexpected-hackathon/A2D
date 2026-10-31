@@ -28,7 +28,7 @@ cp .env.example .env        # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD를 채운다
 - 화면 개발 서버는 `/api`를 `http://127.0.0.1:8000`으로 프록시해 같은 출처로 띄운다(API 명세 3장). CORS는 열지 않는다.
 - POST·PATCH는 `Origin`이 `A2D_WEB_ORIGIN`에 있어야 한다. 화면을 연 주소(포트 포함, 예: `http://localhost:4173`)를 그대로 넣어야 하고, 없으면 로그인부터 `403`이다. curl로 부를 때는 `-H "Origin: http://localhost:5173"`을 붙인다.
 - 화면 개발 서버 프록시를 거치면 요청 IP가 모두 `127.0.0.1`이라, 로그인 5회 실패 잠금이 화면 전체에 걸린다. 시연 계정이 하나라 그대로 둔다.
-- 화면만 개발할 때는 `.env`에 `A2D_VERIFY_MODE=trust`를 두면 TXT 조회 없이 소유권 확인이 통과한다. 시연에서는 기본 `dns`로 두고, TXT 장면을 뺄 때만 루트에서 `./a2d-demo.sh txt-check off`로 끈다(`on`으로 되돌린다).
+- 화면만 개발할 때는 `.env`에 `A2D_VERIFY_MODE=trust`를 두면 `.test`·`.example`·`.invalid`·`.localhost` 도메인은 TXT 조회 없이 소유권 확인이 통과한다. 실제 도메인은 `trust`여도 TXT로 확인한다(실제 점검 엔진이 남의 사이트에 요청하지 않게). 시연에서는 기본 `dns`로 두고, TXT 장면을 뺄 때만 루트에서 `./a2d-demo.sh txt-check off`로 끈다(`on`으로 되돌린다).
 
 ### 시연 환경(target)과 함께
 

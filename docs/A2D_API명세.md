@@ -242,6 +242,8 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 }
 ```
 
+개발·시연 설정(`A2D_VERIFY_MODE=trust`)에서는 예약 최상위 도메인(`.test`·`.example`·`.invalid`·`.localhost`)만 조회 없이 `verified`가 된다. 실제 도메인은 이 설정에서도 TXT를 조회한다.
+
 실패하면 `verify_status`가 `failed`이고 `reason`에 이유가 온다. 예: `"TXT 레코드를 찾지 못했습니다. DNS 반영에 몇 분이 걸릴 수 있습니다."` 실패해도 HTTP 상태는 200이다.
 
 ## 5. 점검
