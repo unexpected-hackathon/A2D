@@ -6,6 +6,7 @@
 #   ./a2d-demo.sh status          세 부분의 상태, LLM 연결, 다음 점검이 시나리오 몇 회차인지
 #   ./a2d-demo.sh reset           새 테이크 준비: 결함을 시연 프로필로 되돌리고 점검 기록을 지운다
 #   ./a2d-demo.sh verify [값]     등록 화면의 TXT 값을 시연 DNS에 넣기 (값을 비우면 백엔드에서 읽어 온다)
+#   ./a2d-demo.sh txt-check on|off  소유권 TXT 확인 켜기(dns)·끄기(trust, "확인"만 누르면 통과). 값 없이 쓰면 지금 상태
 #   ./a2d-demo.sh logs api|web|target
 #
 #   피공격 서버 조작은 target/demo.sh로 그대로 넘긴다:
@@ -65,10 +66,6 @@ preflight() {
     *",$WEB_URL,"*) ;;
     *) die "화면 주소 $WEB_URL 이(가) apps/api/.env의 A2D_WEB_ORIGIN에 없습니다. 넣고 다시 실행하세요." ;;
   esac
-
-  if [ "$(api_get A2D_VERIFY_MODE)" = "trust" ]; then
-    say "주의: A2D_VERIFY_MODE=trust라 TXT 조회 없이 소유권 확인이 통과합니다. 시연에서는 dns로 두세요."
-  fi
 }
 
 # ------------------------------------------------------------------ 화면 (apps/web)
@@ -220,7 +217,10 @@ scenario_report() {
   verify="${state% *}"; finished="${state#* }"; next=$((finished + 1)); SCENARIO_FINISHED=$finished
   case "$verify" in
     none)     say "시연 진행: 도메인 등록 전 (등록 → ./a2d-demo.sh verify → 확인 → 점검)"; return 0 ;;
-    pending|failed) say "시연 진행: 소유권 확인 전 (./a2d-demo.sh verify → 화면에서 확인)"; return 0 ;;
+    pending|failed)
+      if [ "$(verify_mode)" = trust ]; then say "시연 진행: 소유권 확인 전 (화면에서 확인. TXT 확인은 꺼져 있음)"
+      else say "시연 진행: 소유권 확인 전 (./a2d-demo.sh verify → 화면에서 확인)"; fi
+      return 0 ;;
   esac
   case "$next" in
     1) say "시연 진행: 다음 점검은 1회차 → #16 #8 #18, 20점 F" ;;
@@ -240,6 +240,51 @@ verify() {
   fi
   target verify "$value"
   say "화면에서 \"확인\"을 누르세요."
+}
+
+# A2D_VERIFY_MODE를 바꾸고, 백엔드가 떠 있으면 그 컨테이너만 다시 띄운다(점검 기록은 남는다).
+# on = dns(TXT 조회), off = trust(조회 없이 통과)
+verify_mode() { local m; m="$(api_get A2D_VERIFY_MODE | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"; echo "${m:-dns}"; }
+
+txt_check() {
+  local want cur
+  case "${1:-}" in
+    on)  want=dns ;;
+    off) want=trust ;;
+    "")
+      if [ "$(verify_mode)" = trust ]; then say "소유권 TXT 확인: 꺼짐 (A2D_VERIFY_MODE=trust)"
+      else say "소유권 TXT 확인: 켜짐 (A2D_VERIFY_MODE=$(verify_mode))"; fi
+      return ;;
+    *)   die "txt-check on | off" ;;
+  esac
+  [ -f "$API_ENV" ] || die "apps/api/.env가 없습니다. ./a2d-demo.sh up을 먼저 하세요."
+  cur="$(verify_mode)"
+  if [ "$cur" = "$want" ]; then
+    say "이미 A2D_VERIFY_MODE=$want 입니다."
+    return
+  fi
+  # sed -i는 GNU와 macOS가 달라 임시 파일로 바꿔 쓴다
+  local tmp="$API_ENV.tmp"
+  if grep -qE '^A2D_VERIFY_MODE=' "$API_ENV"; then
+    sed -E "s/^A2D_VERIFY_MODE=.*/A2D_VERIFY_MODE=$want/" "$API_ENV" >"$tmp"
+  else
+    { cat "$API_ENV"; [ -z "$(tail -c1 "$API_ENV")" ] || echo; echo "A2D_VERIFY_MODE=$want"; } >"$tmp"
+  fi
+  cat "$tmp" >"$API_ENV" && rm -f "$tmp"   # cat으로 덮어 파일 권한을 그대로 둔다
+  say "A2D_VERIFY_MODE: $cur → $want"
+  if curl -s -o /dev/null --max-time 2 "$(api_url)/health"; then
+    say "백엔드만 다시 띄웁니다 (진행 중인 점검이 있으면 끊깁니다)"
+    api_compose up -d --force-recreate api
+    wait_api
+    say "로그인이 풀렸습니다. 브라우저에서 다시 로그인하세요."
+  else
+    say "백엔드가 꺼져 있어 다음 up부터 적용됩니다."
+  fi
+  if [ "$want" = trust ]; then
+    say "이제 등록 화면에서 \"확인\"만 누르면 소유권이 확인됩니다(verify 단계 생략)."
+  else
+    say "이미 확인된 도메인은 그대로 확인됨입니다. TXT 장면을 다시 찍으려면 ./a2d-demo.sh reset"
+  fi
 }
 
 # ------------------------------------------------------------------ 명령
@@ -275,7 +320,11 @@ reset() {
   wait_api
   web_up
   say "준비됐습니다. 브라우저는 새로 고침하거나 $WEB_URL/login 을 새로 여세요(이전 세션은 끊겼습니다)."
-  say "도메인을 다시 등록하면 TXT 값이 새로 나옵니다. 등록 뒤 ./a2d-demo.sh verify"
+  if [ "$(verify_mode)" = trust ]; then
+    say "소유권 TXT 확인이 꺼져 있습니다. 도메인을 다시 등록하고 \"확인\"만 누르세요."
+  else
+    say "도메인을 다시 등록하면 TXT 값이 새로 나옵니다. 등록 뒤 ./a2d-demo.sh verify"
+  fi
 }
 
 status_line() {
@@ -287,6 +336,7 @@ status_line() {
   else
     say "점검 엔진: $engine"
   fi
+  txt_check
   llm_report
 }
 
@@ -319,7 +369,8 @@ case "${1:-}" in
   status)  status ;;
   reset)   reset ;;
   verify)  shift; verify "${1:-}" ;;
+  txt-check) shift; txt_check "${1:-}" ;;
   logs)    shift; logs "$@" ;;
   fix|break|preset|test-server|check|dns-on|dns-off) target "$@" ;;
-  *)       sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *)       sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
