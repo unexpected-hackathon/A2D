@@ -5,7 +5,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY a2d /srv/a2d
-COPY fixtures /srv/fixtures
 
 RUN useradd --system --uid 10001 a2d && mkdir /srv/data && chown a2d /srv/data
 USER 10001

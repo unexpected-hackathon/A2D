@@ -19,7 +19,6 @@ from . import agents
 from .auth import COOKIE, Auth
 from .config import Settings
 from .engine.base import Engine
-from .engine.fixture import FixtureEngine
 from .errors import ApiError, unauthenticated, validation
 from .service import Service
 from .store import Store
@@ -33,8 +32,6 @@ log = logging.getLogger("a2d")
 
 
 def load_engine(settings: Settings) -> Engine:
-    if settings.engine == "fixture":
-        return FixtureEngine(step_sec=settings.fixture_step_sec)
     module, _, cls = settings.engine.partition(":")
     return getattr(importlib.import_module(module), cls)(settings)
 

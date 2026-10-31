@@ -54,7 +54,7 @@ export function ScanBanner() {
                 </Text>
                 <Text textStyle="t3Regular" color="fg.neutralMuted">
                   {running
-                    ? `요청 ${running.budget.requests_used}건(최대 ${running.budget.requests_limit}건) · ${running.budget.elapsed_sec}초 경과 · 읽기 전용으로 점검합니다`
+                    ? `요청 ${running.budget.requests_used}건${running.budget.requests_limit > 0 ? `(최대 ${running.budget.requests_limit}건)` : ''} · ${running.budget.elapsed_sec}초 경과 · 읽기 전용으로 점검합니다`
                     : '점검을 시작했습니다'}
                 </Text>
               </VStack>

@@ -40,6 +40,11 @@ class Budget:
     def elapsed(self) -> int:
         return int(time.monotonic() - self.started)
 
+    @property
+    def requests_exhausted(self) -> bool:
+        """요청 상한을 다 썼는지. 상한이 0이면 제한이 없다(정확한 결과를 위해 기본값은 0)."""
+        return self.requests_limit > 0 and self.requests_used >= self.requests_limit
+
     def check(self) -> None:
         if self.stop_requested:
             raise ScanStopped("중지 요청")

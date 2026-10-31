@@ -28,13 +28,6 @@ def _int(name: str, default: int) -> int:
         return default
 
 
-def _float(name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(name, default))
-    except ValueError:
-        return default
-
-
 def _list(name: str, default: str = "") -> list[str]:
     return [v.strip() for v in os.environ.get(name, default).split(",") if v.strip()]
 
@@ -59,23 +52,19 @@ class Settings:
     # 1이면 /api/v1/openapi.json·/api/v1/docs를 연다. A2D 자신이 #17에 걸리므로 시연 환경 밖에서는 끈다
     expose_openapi: bool = False
 
-    # 소유권 확인(FR-01). dns = TXT 레코드 조회, trust = 모든 도메인을 조회 없이 통과(화면 개발용, 또는 TXT 장면을 뺀 시연).
-    # trust에서는 소유권을 확인하지 않으므로 운영자가 직접 관리하는 도메인만 등록해 점검한다.
-    verify_mode: str = "dns"
     # 점검 DNS. 소유권 확인·자산 찾기·점검 HTTP·TLS 접속이 모두 이 DNS로 주소를 찾는다.
     # 비우면 시스템 DNS. 예: 10.253.53.53, 127.0.0.1:15353
     dns_servers: list[str] = field(default_factory=list)
 
-    # 점검 엔진. fixture = 시연 시나리오를 돌려주는 가짜 엔진, 또는 "패키지.모듈:클래스"
-    engine: str = "fixture"
-    fixture_step_sec: float = 0.4
+    # 점검 엔진. "패키지.모듈:클래스"
+    engine: str = "a2d.engine.live:LiveEngine"
     # #28이 인증서 발급 체인을 검증할 CA 묶음 경로. 넣으면 이 CA가 발급하지 않은 인증서를 #28 "invalid"로 본다.
     # 비우면 자체 서명·이름·만료만 본다. 점검 HTTP(내용 조회)는 이 값과 상관없이 검증하지 않는다
     # (자체 서명 대상도 내용을 읽어야 한다 — target/README "결함 상태의 TLS").
     ca_bundle: str = ""
-    request_limit: int = 300
+    request_limit: int = 0  # 점검 1회의 요청 상한. 0이면 없다(호스트당 초당 2건은 그대로 지킨다)
     tool_call_limit: int = 20
-    time_limit_sec: int = 300
+    time_limit_sec: int = 1800
 
     # LLM(강현 님 GPU 서버의 vLLM, OpenAI 호환). 비어 있으면 llm=down, 기본 가이드로 동작한다
     llm_base_url: str = ""
@@ -93,14 +82,12 @@ class Settings:
             web_origins=_list("A2D_WEB_ORIGIN", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"),
             secure_cookie=_bool("A2D_SECURE_COOKIE"),
             expose_openapi=_bool("A2D_EXPOSE_OPENAPI"),
-            verify_mode=os.environ.get("A2D_VERIFY_MODE", "dns").strip().lower(),
             dns_servers=_list("A2D_DNS_SERVER"),
-            engine=os.environ.get("A2D_ENGINE", "fixture").strip(),
-            fixture_step_sec=_float("A2D_FIXTURE_STEP_SEC", 0.4),
+            engine=os.environ.get("A2D_ENGINE", "a2d.engine.live:LiveEngine").strip(),
             ca_bundle=os.environ.get("A2D_CA_BUNDLE", "").strip(),
-            request_limit=_int("A2D_REQUEST_LIMIT", 300),
+            request_limit=_int("A2D_REQUEST_LIMIT", 0),
             tool_call_limit=_int("A2D_TOOL_CALL_LIMIT", 20),
-            time_limit_sec=_int("A2D_TIME_LIMIT_SEC", 300),
+            time_limit_sec=_int("A2D_TIME_LIMIT_SEC", 1800),
             llm_base_url=os.environ.get("A2D_LLM_BASE_URL", "").rstrip("/"),
             llm_api_key=os.environ.get("A2D_LLM_API_KEY", ""),
             llm_model=os.environ.get("A2D_LLM_MODEL", "qwen3-8b"),

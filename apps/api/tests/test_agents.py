@@ -17,6 +17,7 @@ from a2d.config import Settings
 from a2d.engine.base import Budget, ScanStopped
 from a2d.main import create_app
 
+from .fakes import ScenarioEngine, skip_attack
 from .test_api import EMAIL, ORIGIN, PASSWORD, login, setup_domain, wait_done
 
 
@@ -64,7 +65,7 @@ def good_item(body: dict) -> str:
 def llm_settings(tmp_path) -> Settings:
     return Settings(
         admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
-        web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0,
+        web_origins=[ORIGIN],
         llm_base_url="http://llm.test/v1", llm_api_key="test-key",
     )
 
@@ -76,9 +77,11 @@ def make_client(tmp_path):
 
     def make(fake: FakeVllm) -> TestClient:
         settings = llm_settings(tmp_path)
-        c = TestClient(create_app(settings), base_url="http://testserver", headers={"Origin": ORIGIN})
+        c = TestClient(create_app(settings, engine=ScenarioEngine()), base_url="http://testserver",
+                       headers={"Origin": ORIGIN})
         c.__enter__()
         clients.append(c)
+        skip_attack(c.app.state.svc)  # 가짜 vLLM은 조치 가이드·질의응답만 답한다
         llm = agents.LlmClient(settings, transport=httpx.MockTransport(fake))
         c.app.state.llm = llm
         c.app.state.svc.llm = llm

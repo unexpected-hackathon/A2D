@@ -12,7 +12,7 @@ LLM에는 발견 ID·상태·가린 증거만 돌려준다(응답 원문·위치
 안전 규칙(상세설계 4절·2.4, PRD NFR-04):
 - 모든 요청에 A2D 점검임을 밝히는 User-Agent를 붙인다.
 - GET만 보낸다(쓰기·변경 금지). 요청마다 10초 제한, 대상 호스트당 초당 2건으로 속도를 제한한다.
-- 요청을 보낼 때마다 ctx.budget.requests_used를 올리고, 점검 1회 300건 상한을 넘으면 더 보내지 않는다.
+- 요청을 보낼 때마다 ctx.budget.requests_used를 올리고, 상한(0이면 없음)을 넘으면 더 보내지 않는다.
 - 요청 사이사이 ctx.budget.check()로 중지 요청·제한 시간을 확인한다(ScanStopped는 그대로 올려 보낸다).
 - 개인정보·비밀값은 가린 발췌(200자 이내)만 근거로 저장하고, LLM에는 원문을 넘기지 않는다.
 
@@ -81,7 +81,7 @@ class AttackProbe:
         """GET 한 번. 예산을 넘었으면 None, 연결 실패도 None. ScanStopped는 올려 보낸다."""
         self.ctx.budget.check()  # 중지 요청·제한 시간
         b = self.ctx.budget
-        if b.requests_used >= b.requests_limit:
+        if b.requests_exhausted:
             log.info("요청 예산(%d건) 소진으로 추가 요청 안 함", b.requests_limit)
             return None
         await self._throttle(host)

@@ -529,7 +529,7 @@ async def run_attack(llm: LlmClient, ctx: EngineContext, summary: dict,
     scope = Scope.from_summary(summary)
     guard = Guard("attack", scope, ctx.budget, ctx.audit, handlers)
     system = ATTACK_SYSTEM.format(tool_calls=ctx.budget.tool_calls_limit,
-                                  requests=ctx.budget.requests_limit)
+                                  requests=ctx.budget.requests_limit or "제한 없음")
     messages: list[dict] = [
         {"role": "system", "content": system},
         {"role": "user", "content": ATTACK_FIRST_USER},

@@ -14,7 +14,9 @@ import pytest
 from a2d.config import Settings
 from a2d.engine.base import Budget, EngineContext, RawAsset, RawFinding
 from a2d.engine.live import LiveEngine
+from a2d.engine import intel
 from a2d.engine.net import USER_AGENT, CertInfo
+from tests.test_engine_intel import KEV, NVD_APACHE, NVD_EMPTY, eol_v1
 
 DOMAIN = "jobnest.test"
 PROXY = "10.253.53.80"
@@ -85,6 +87,19 @@ class FakeTarget:
                 return httpx.Response(status, json=body, headers=h)
             return httpx.Response(status, text=body, headers={**h, "content-type": media})
 
+        # 공개 자료 조회(#23 NVD·KEV, #25 endoflife.date). 실제 응답 꼴은 test_engine_intel의 것을 쓴다
+        if host == "services.nvd.nist.gov":
+            url = str(request.url)
+            return httpx.Response(200, json=NVD_APACHE if ("http_server" in url and "2.4.49" in url) else NVD_EMPTY)
+        if host == "www.cisa.gov":
+            return httpx.Response(200, json=KEV)
+        if host == "endoflife.date":
+            if path.endswith("/php"):
+                return httpx.Response(200, json=eol_v1("php", [("8.2", False, None), ("8.1", True, "2025-12-31")]))
+            if path.endswith("/apache-http-server"):
+                return httpx.Response(200, json=eol_v1("apache-http-server", [("2.4", False, None)]))
+            return httpx.Response(404, text="nf")
+
         # 외부 주소
         if host == EXT_PAGES or host == f"promo.{DOMAIN}":
             return resp(404, PAGES_404, {"server": "GitHub.com"})
@@ -124,7 +139,14 @@ class FakeTarget:
         if path == "/":
             return resp(200, HOME_HTML, {"set-cookie": cookie})
         if path == "/robots.txt":
-            return resp(200, f"User-agent: *\nDisallow: /admin/\nSitemap: https://www.{DOMAIN}/sitemap.xml", media="text/plain")
+            return resp(200, f"User-agent: *\nDisallow: /admin/\nDisallow: /internal/reports/\n"
+                             f"Sitemap: https://www.{DOMAIN}/sitemap.xml", media="text/plain")
+        # target/jobnest처럼 robots가 가리키는 사내 보고서 목록과, 거기서 링크로 가는 지원자 내보내기(#16과 같은 조치)
+        if path == "/internal/reports/":
+            return resp(401, {"detail": "인증이 필요합니다"}) if 16 in fx else \
+                resp(200, '<html><a href="/internal/reports/export">지원자 내보내기</a></html>')
+        if path == "/internal/reports/export":
+            return resp(401, {"detail": "인증이 필요합니다"}) if 16 in fx else resp(200, APPLICANTS)
         if path == "/sitemap.xml":
             return resp(200, "<urlset><url><loc>/</loc></url></urlset>", media="application/xml")
         if path == "/static/js/app.js":
@@ -169,7 +191,9 @@ class FakeTarget:
                 return resp(401, {"detail": "인증이 필요합니다"})
             return resp(200, APPLICANTS)
         if path in ("/openapi.json", "/swagger"):
-            return resp(404, "nf") if 17 in fx else resp(200, {"openapi": "3.0.0", "paths": {}})
+            return resp(404, "nf") if 17 in fx else resp(200, {"openapi": "3.0.0", "paths": {
+                "/api/v1/status": {"get": {}}, "/api/v1/applicants": {"get": {}},
+                "/api/v1/applicants/{applicant_id}": {"get": {}}}})
         return resp(404, "nf")
 
 
@@ -214,7 +238,8 @@ class FakeTls:
         return CertInfo(not_after=now + dt.timedelta(days=7), self_signed=True, hostname_ok=True)
 
 
-def run_engine(fixed, *, requests_limit=300, test_server=False):
+def run_engine(fixed, *, requests_limit=0, test_server=False):
+    intel.clear_caches()
     target = FakeTarget(fixed)
     client = httpx.AsyncClient(transport=httpx.MockTransport(target))
     dns = FakeDns(fixed, test_server=test_server)
@@ -358,11 +383,19 @@ def test_no_double_findings_on_apex_and_www():
     assert sum(1 for f in findings if f.check_id == 18) == 1
 
 
-def test_demo_preset_three_findings():
-    """기본 시연 프로필: #16·#8·#18만 결함. 발견이 정확히 세 건이어야 20F→…→100A 시연이 맞는다."""
+def test_demo_preset_findings():
+    """기본 시연 프로필: #16·#8·#18만 결함. 크롤링이 robots → 사내 보고서 목록 → 내보내기 링크를 따라가
+    www의 숨은 API(#16)도 찾는다. #16은 api·www 두 자산에서 한 건씩이다."""
     all_faults = {6, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 25, 27, 28, 30, 31, 32}
     _, findings, _, _ = run_engine(all_faults - {16, 8, 18})
     assert found(findings) == {(8, "confirmed"), (16, "pii"), (18, "basic")}
+    assert sorted(f.host for f in findings if f.check_id == 16) == [f"api.{DOMAIN}", f"www.{DOMAIN}"]
+
+
+def test_hidden_export_found_by_following_links():
+    _, findings, _, target = run_engine(set())
+    www16 = next(f for f in findings if f.check_id == 16 and f.host == f"www.{DOMAIN}")
+    assert "/internal/reports/export" in www16.location
 
 
 def test_request_budget_capped():
@@ -396,7 +429,7 @@ def test_end_to_end_scan_through_service(tmp_path):
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(FakeTarget(set())))
     s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
-                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0)
+                 web_origins=[ORIGIN])
     engine = LiveEngine(s, dns=FakeDns(set()), tls=FakeTls(set()), client=client, host_min_interval=0)
 
     with TestClient(create_app(s, engine=engine), base_url="http://testserver",
@@ -427,3 +460,22 @@ def test_untrusted_issuer_reports_28(monkeypatch):
     all_faults = {6, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 25, 27, 28, 30, 31, 32}
     _, findings, _, _ = run_engine(all_faults)
     assert found(findings) == {(28, "invalid")}
+
+
+def test_domain_expiry_from_rdap(monkeypatch):
+    """#33: RDAP 만료일이 30일 안이면 expiring30, 9999년(공공기관)이면 보고하지 않는다."""
+    all_faults = {6, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 25, 27, 28, 30, 31, 32}
+    soon = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=20)
+
+    async def reg(http, domain):
+        return {"expires": soon, "transfer_locked": False}
+    monkeypatch.setattr(intel, "domain_registration", reg)
+    _, findings, _, _ = run_engine(all_faults)
+    f = next(f for f in findings if f.check_id == 33)
+    assert f.situation == "expiring30" and "이전 잠금 꺼짐" in f.evidence
+
+    async def public(http, domain):
+        return {"expires": dt.datetime(9999, 12, 30, tzinfo=dt.timezone.utc), "transfer_locked": True}
+    monkeypatch.setattr(intel, "domain_registration", public)
+    _, findings, _, _ = run_engine(all_faults)
+    assert not any(f.check_id == 33 for f in findings)

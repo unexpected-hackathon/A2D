@@ -98,7 +98,7 @@ def test_components_reach_asset_api(tmp_path):
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(FakeTarget(set())))
     s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
-                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0)
+                 web_origins=[ORIGIN])
     engine = LiveEngine(s, dns=FakeDns(set()), tls=CountingTls(), client=client, host_min_interval=0)
     with TestClient(create_app(s, engine=engine), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
         login(c)

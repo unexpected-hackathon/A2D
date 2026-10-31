@@ -4,7 +4,7 @@
 공통 규칙(상세설계 4절·NFR-04):
 - 모든 HTTP 요청에 A2D 점검임을 밝히는 User-Agent를 붙인다.
 - GET만 보낸다. 요청마다 10초 제한, 대상 호스트당 초당 2건으로 속도를 제한한다.
-- 요청을 보낼 때마다 Budget.requests_used를 올리고, 점검 1회 300건 상한을 넘으면 더 보내지 않는다.
+- 요청을 보낼 때마다 Budget.requests_used를 올리고, 상한(A2D_REQUEST_LIMIT, 0이면 없음)을 넘으면 더 보내지 않는다.
 - 요청 사이 Budget.check()로 중지 요청·제한 시간을 확인한다(ScanStopped는 그대로 올려 보낸다).
 - 점검 DNS(A2D_DNS_SERVER)를 정했으면 자산 찾기·HTTP·TLS가 모두 그 DNS로 주소를 찾는다.
   자산은 점검 DNS로 찾고 접속은 시스템 DNS로 하면, 노트북에서 직접 띄울 때 시연 대상에 닿지 못한다.
@@ -146,16 +146,16 @@ class HttpClient:
         self._cache: dict[str, Fetched | None] = {}
         self.responses = 0  # 상태 코드와 상관없이 응답을 받은 횟수(대상에 닿았는지 판단)
 
-    async def get_cached(self, url: str) -> Fetched | None:
-        """같은 점검에서 이미 받은 주소(홈페이지·JS 등)는 다시 요청하지 않는다. 요청 예산을 아낀다."""
+    async def get_cached(self, url: str, *, max_bytes: int = MAX_BODY_BYTES) -> Fetched | None:
+        """같은 점검에서 이미 받은 주소(홈페이지·JS 등)는 다시 요청하지 않는다."""
         if url not in self._cache:
-            self._cache[url] = await self.get(url)
+            self._cache[url] = await self.get(url, max_bytes=max_bytes)
         return self._cache[url]
 
     async def get(self, url: str, extra_headers: dict[str, str] | None = None, *,
-                  timeout: float = REQUEST_TIMEOUT) -> Fetched | None:
+                  timeout: float = REQUEST_TIMEOUT, max_bytes: int = MAX_BODY_BYTES) -> Fetched | None:
         self.budget.check()  # 중지 요청·제한 시간(ScanStopped)
-        if self.budget.requests_used >= self.budget.requests_limit:
+        if self.budget.requests_exhausted:
             log.info("요청 예산(%d건) 소진", self.budget.requests_limit)
             return None
         host = httpx.URL(url).host
@@ -169,7 +169,7 @@ class HttpClient:
             log.info("요청 실패 %s: %s", url, type(e).__name__)
             return None
         self.responses += 1
-        body = r.content[:MAX_BODY_BYTES]
+        body = r.content[:max_bytes]
         try:
             text = body.decode(r.encoding or "utf-8", errors="replace")
         except (LookupError, ValueError):

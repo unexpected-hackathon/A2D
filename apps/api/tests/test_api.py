@@ -1,4 +1,4 @@
-"""API 명세대로 화면 4개의 호출 순서가 동작하는지 가짜 엔진으로 확인한다."""
+"""API 명세대로 화면 4개의 호출 순서가 동작하는지 가짜 엔진(tests/fakes.py)으로 확인한다."""
 
 import time
 
@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 
 from a2d.config import Settings
 from a2d.main import create_app
+
+from .fakes import ScenarioEngine, publish_txt
 
 ORIGIN = "http://localhost:5173"
 EMAIL = "admin@jobnest.test"
@@ -17,9 +19,10 @@ PASSWORD = "demo-password-only"
 def client(tmp_path):
     s = Settings(
         admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
-        web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0,
+        web_origins=[ORIGIN],
     )
-    with TestClient(create_app(s), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
+    with TestClient(create_app(s, engine=ScenarioEngine()), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
+        publish_txt(c.app.state.svc)
         yield c
 
 
@@ -39,7 +42,9 @@ def wait_done(c, scan_id):
 
 
 def setup_domain(c):
+    """도메인을 등록하고, 발급한 TXT 값을 DNS에 넣어 둔 것처럼 해 소유권을 확인한다."""
     d = c.post("/api/v1/domains", json={"domain": "jobnest.test"}).json()
+    publish_txt(c.app.state.svc)
     assert c.post(f"/api/v1/domains/{d['domain_id']}/verify").json()["verify_status"] == "verified"
     return d["domain_id"]
 
@@ -187,8 +192,8 @@ def test_first_scan_changes_and_in_progress(client):
 
 def test_stop_scan(tmp_path):
     s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "db.sqlite3"),
-                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0.05)
-    with TestClient(create_app(s), headers={"Origin": ORIGIN}) as c:
+                 web_origins=[ORIGIN])
+    with TestClient(create_app(s, engine=ScenarioEngine(step_sec=0.05)), headers={"Origin": ORIGIN}) as c:
         login(c)
         domain_id = setup_domain(c)
         scan_id = c.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
@@ -210,8 +215,8 @@ def test_not_found(client):
 def test_stopped_scan_keeps_unchecked_findings(tmp_path):
     """중지한 재점검이 확인 못 한 발견을 해결됨으로, 자산을 사라짐으로 내지 않는다."""
     s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "db.sqlite3"),
-                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0.05)
-    with TestClient(create_app(s), headers={"Origin": ORIGIN}) as c:
+                 web_origins=[ORIGIN])
+    with TestClient(create_app(s, engine=ScenarioEngine(step_sec=0.05)), headers={"Origin": ORIGIN}) as c:
         login(c)
         domain_id = setup_domain(c)
         s1 = c.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
@@ -254,8 +259,8 @@ def test_time_limit_is_stopped_not_done(client):
 
 def test_admin_email_case_insensitive(tmp_path):
     s = Settings(admin_email="Admin@JobNest.test", admin_password=PASSWORD, db_path=str(tmp_path / "db.sqlite3"),
-                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0)
-    with TestClient(create_app(s), headers={"Origin": ORIGIN}) as c:
+                 web_origins=[ORIGIN])
+    with TestClient(create_app(s, engine=ScenarioEngine()), headers={"Origin": ORIGIN}) as c:
         r = c.post("/api/v1/auth/login", json={"email": "admin@jobnest.test", "password": PASSWORD})
         assert r.status_code == 200 and r.json()["user"]["email"] == "admin@jobnest.test"
         assert c.post("/api/v1/auth/login", json={"email": "ADMIN@jobnest.TEST", "password": PASSWORD}).status_code == 200
@@ -288,42 +293,55 @@ def test_attack_skipped_without_llm_is_reported(client):
     assert summary["latest_scan"]["attack"] == attack
 
 
-def test_attack_skipped_on_fixture_engine_hides_cause(tmp_path):
-    """가짜 엔진에서는 LLM이 있어도 건너뛴다. 시연 화면에 나가는 문장에는 원인(가짜 엔진)을 쓰지 않는다."""
+def test_attack_skipped_when_llm_unreachable(tmp_path):
+    """LLM 주소는 있는데 응답하지 않으면 추가 점검을 건너뛰고 기본 점검 결과로 점수를 낸다."""
     s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
-                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0,
-                 llm_base_url="http://127.0.0.1:9/v1")  # 닫힌 포트: 조치 가이드는 바로 기본 가이드로
-    with TestClient(create_app(s), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
+                 web_origins=[ORIGIN],
+                 llm_base_url="http://127.0.0.1:9/v1")  # 닫힌 포트: 첫 LLM 요청부터 실패, 조치 가이드는 기본 가이드로
+    with TestClient(create_app(s, engine=ScenarioEngine()), base_url="http://testserver",
+                    headers={"Origin": ORIGIN}) as c:
         login(c)
         domain_id = setup_domain(c)
         body = wait_done(c, c.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"])
+    assert body["status"] == "done" and body["safety_score"] == 20
     attack = body["attack"]
-    assert attack["status"] == "skipped" and attack["reason"] == "fixture_engine"
-    assert "가짜" not in attack["message"] and "fixture" not in attack["message"]
+    assert attack["status"] == "skipped" and attack["reason"] == "llm_unavailable"
+    assert "AI 서버가 응답하지 않아" in attack["message"]
 
 
-# ------------------------------------------------------------------ TXT 확인을 끄면(trust) 조회 없이 통과
+# ------------------------------------------------------------------ 소유권 확인은 언제나 TXT로
 
-def test_trust_mode_skips_txt_for_every_domain(tmp_path, monkeypatch):
-    """A2D_VERIFY_MODE=trust면 예약 도메인이든 실제 도메인이든 TXT를 조회하지 않고 통과한다. dns 모드는 항상 TXT로 확인한다."""
+def test_verify_always_looks_up_txt(tmp_path, monkeypatch):
+    """예약 도메인이든 실제 도메인이든 _a2d-verify.<도메인> TXT를 조회하고, 발급한 값이 있어야만 통과한다."""
     from a2d.service import Service
 
+    records: dict[str, list[str]] = {}
     looked: list[str] = []
 
-    async def no_txt(self, name):
+    async def lookup(self, name):
         looked.append(name)
-        return []
+        return records.get(name, [])
 
-    monkeypatch.setattr(Service, "_lookup_txt", no_txt)
+    monkeypatch.setattr(Service, "_lookup_txt", lookup)
     names = ("jobnest.test", "codykata.com", "www.example.co.kr")
-    for mode, want in (("trust", "verified"), ("dns", "failed")):
-        s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / f"{mode}.sqlite3"),
-                     web_origins=[ORIGIN], verify_mode=mode, fixture_step_sec=0)
-        with TestClient(create_app(s), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
-            login(c)
-            for name in names:
-                d = c.post("/api/v1/domains", json={"domain": name}).json()
-                assert c.post(f"/api/v1/domains/{d['domain_id']}/verify").json()["verify_status"] == want, (mode, name)
-        if mode == "trust":
-            assert looked == []  # trust는 TXT를 조회하지 않는다
-    assert looked == [f"_a2d-verify.{n}" for n in names]
+    s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
+                 web_origins=[ORIGIN])
+    with TestClient(create_app(s, engine=ScenarioEngine()), base_url="http://testserver",
+                    headers={"Origin": ORIGIN}) as c:
+        login(c)
+        for name in names:
+            d = c.post("/api/v1/domains", json={"domain": name}).json()
+            txt = d["txt_record"]
+            url = f"/api/v1/domains/{d['domain_id']}/verify"
+
+            r = c.post(url).json()  # 레코드 없음
+            assert r["verify_status"] == "failed" and "찾지 못했습니다" in r["reason"], name
+
+            records[txt["name"]] = ["a2d-verify=0000000000000000"]  # 다른 값
+            r = c.post(url).json()
+            assert r["verify_status"] == "failed" and "다릅니다" in r["reason"], name
+
+            records[txt["name"]] = ["v=spf1 -all", txt["value"]]  # 발급한 값이 있으면 통과
+            r = c.post(url).json()
+            assert r["verify_status"] == "verified" and r["reason"] is None, name
+    assert looked == [f"_a2d-verify.{n}" for n in names for _ in range(3)]

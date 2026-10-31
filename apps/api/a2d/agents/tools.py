@@ -260,7 +260,7 @@ class Guard:
             args = self._parse(spec, raw_args)
             logged_args = args.model_dump()
             self._in_scope(args)
-            if spec.sends_requests and self.budget.requests_used >= self.budget.requests_limit:
+            if spec.sends_requests and self.budget.requests_exhausted:
                 raise Rejected(f"요청 예산({self.budget.requests_limit}건)을 다 썼음")
         except Rejected as e:
             self.audit(actor, name, logged_args, rejected=True, reject_reason=str(e))
