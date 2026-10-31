@@ -1,0 +1,7 @@
+# 팀원 OS(Windows·WSL·macOS)와 상관없이 줄바꿈을 LF로 맞춘다
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.zip binary

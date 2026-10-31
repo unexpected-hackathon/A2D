@@ -1,0 +1,46 @@
+# 저장소에 올리지 않는 자료 (대회 가이드, GPU 서버 매뉴얼, 멘토링·발표 준비, 내부 결정 기록)
+/private/
+
+# 비밀값
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# 모델 가중치·캐시 (GPU 서버에서 내려받는다)
+*.safetensors
+*.gguf
+.cache/
+hf_cache/
+
+# 에디터·OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# 피공격 서버(target)에 일부러 심는 결함 파일(.env, backup.zip 등)은 예외로 추적한다.
+# 위 규칙에 걸리는 결함 파일은 target/planted/ 아래에 둔다.
+!target/planted/**
