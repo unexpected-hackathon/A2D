@@ -1,6 +1,6 @@
 # 작업 규칙
 
-A2D는 **GitHub flow**로 작업한다. `main` 하나만 길게 살아 있고, 모든 변경은 짧은 브랜치에서 만들어 Pull Request(PR)로 `main`에 합친다.
+A2D는 **GitHub flow**로 작업한다. `main` 브랜치 하나만 계속 유지하고, 모든 변경은 짧은 브랜치에서 만들어 Pull Request(PR)로 `main`에 합친다.
 
 ## 1. GitHub flow
 
@@ -25,7 +25,7 @@ main ──●────────────●─────────
 6. **Squash merge로 합친다.** PR 하나가 `main`의 커밋 하나가 되고, PR 제목이 그 커밋 메시지가 된다.
 7. **머지한 브랜치는 지운다.**
 
-`main`이 앞서 나가 충돌이 나면 내 브랜치에서 `git pull --rebase origin main`으로 맞춘 뒤 다시 push한다(`--force-with-lease`). 남과 같이 쓰는 브랜치는 rebase하지 않는다.
+`main`이 앞서 나가 충돌이 나면 내 브랜치에서 `git pull --rebase origin main`으로 맞춘 뒤 다시 push한다(`--force-with-lease`). 다른 사람과 같이 쓰는 브랜치는 rebase하지 않는다.
 
 ### 워크트리는 필요할 때만
 
@@ -79,7 +79,7 @@ git branch -D fix/api-score
 ```
 <type>(<scope>): <요약>
 
-<본문: 무엇을, 왜 바꿨는지 (선택)>
+<본문 (선택): 바꾼 이유나 자세한 설명>
 ```
 
 - 요약은 한국어로 50자 안쪽, 끝에 마침표를 찍지 않는다.
@@ -88,7 +88,7 @@ git branch -D fix/api-score
 
 ### type
 
-| type | 쓰는 때 |
+| type | 용도 |
 | --- | --- |
 | `feat` | 새 기능 |
 | `fix` | 버그 수정 |
@@ -127,7 +127,8 @@ docs(docs): PRD에 재점검 흐름 추가
 ## 4. Pull Request
 
 - **제목**은 squash 커밋 메시지가 되므로 커밋 규칙과 같은 형식으로 쓴다.
-- **본문**은 [PR 템플릿](.github/pull_request_template.md)을 채운다. 관련 기능 번호(FR-xx, C-xx)를 적는다.
+- **본문**은 [PR 템플릿](.github/pull_request_template.md)을 채운다. 관련 기능 번호(FR-xx, C-xx)가 있으면 적는다.
+- 이슈를 해결하는 PR은 본문에 `Closes #이슈번호`를 적는다. 머지되면 이슈가 자동으로 닫힌다.
 - 화면을 바꿨으면 스크린샷을 붙인다.
 - PR은 작게 연다. 하루 넘게 열려 있는 PR은 나눈다.
 
