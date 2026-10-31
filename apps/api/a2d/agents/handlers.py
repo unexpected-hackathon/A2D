@@ -275,12 +275,14 @@ def build_attack_handlers(ctx: EngineContext, client: httpx.AsyncClient, *,
     return AttackProbe(ctx, client, scheme=scheme, host_min_interval=host_min_interval).handlers
 
 
-def open_client(verify: bool | str = False) -> httpx.AsyncClient:
+def open_client(verify: bool | str = False, resolve=None) -> httpx.AsyncClient:
     """점검용 httpx 클라이언트. 기본은 읽기 전용·식별 User-Agent·리다이렉트 비추적.
 
     verify는 호출부(A2D_CA_BUNDLE)가 정한다. 기본은 검증을 끈다. 외부 노출 점검은 자체 서명·만료
     인증서를 쓰는 서버도 내용을 읽어야 하고(그런 서버가 점검 대상이다), 인증서 유효성은 #28이 따로 본다
     (target/README "결함 상태의 TLS"). CA 묶음 경로를 주면 그 CA로 검증한다.
+    resolve(점검 DNS)를 주면 엔진과 같은 DNS로 접속 주소를 찾는다(engine.net.open_http_client).
     """
-    return httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT,
-                             follow_redirects=False, verify=verify)
+    from ..engine.net import open_http_client
+
+    return open_http_client(verify, resolve=resolve)

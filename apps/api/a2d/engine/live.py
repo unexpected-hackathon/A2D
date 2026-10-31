@@ -93,13 +93,15 @@ class LiveEngine(Engine):
                  client=None, host_min_interval: float | None = None):
         self.s = settings
         self._dns = dns if dns is not None else DnsResolver(settings.dns_servers)
-        self._tls = tls if tls is not None else TlsInspector()
+        # 점검 DNS를 정했으면 HTTP·TLS 접속도 같은 DNS로 주소를 찾는다(자산 찾기와 접속이 같은 곳을 보게)
+        self._resolve = self._dns.a if settings.dns_servers else None
+        self._tls = tls if tls is not None else TlsInspector(resolve=self._resolve)
         self._client = client            # 테스트에서 httpx.MockTransport를 끼운다
         self._owns_client = client is None
         self._interval = host_min_interval
 
     async def run(self, ctx: EngineContext) -> None:
-        client = self._client or open_http_client(self.s.ca_bundle or False)
+        client = self._client or open_http_client(self.s.ca_bundle or False, resolve=self._resolve)
         interval = self._interval if self._interval is not None else None
         http = HttpClient(ctx.budget, client) if interval is None else \
             HttpClient(ctx.budget, client, host_min_interval=interval)

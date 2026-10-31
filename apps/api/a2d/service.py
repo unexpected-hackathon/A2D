@@ -20,6 +20,7 @@ from .agents import handlers as attack_handlers
 from .catalog import CHECKS, FIX_MINUTES, GUIDES, SITUATIONS, check_name
 from .config import Settings
 from .engine.base import Budget, Engine, EngineContext, RawAsset, RawFinding, ScanStopped
+from .engine.net import DnsResolver
 from .errors import ApiError, not_found, validation
 from .scoring import (
     CONFIDENCE_FACTOR,
@@ -341,7 +342,8 @@ class Service:
         """
         if not self.llm.configured or self.s.engine == "fixture":
             return
-        async with attack_handlers.open_client(self.s.ca_bundle or False) as client:
+        resolve = DnsResolver(self.s.dns_servers).a if self.s.dns_servers else None  # 엔진과 같은 점검 DNS
+        async with attack_handlers.open_client(self.s.ca_bundle or False, resolve=resolve) as client:
             handlers = attack_handlers.build_attack_handlers(ctx, client)
             await agents.run_attack(self.llm, ctx, summary, handlers=handlers)
 

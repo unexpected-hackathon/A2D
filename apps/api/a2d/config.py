@@ -61,7 +61,9 @@ class Settings:
 
     # 소유권 확인(FR-01). dns = TXT 레코드 조회, trust = 조회 없이 통과(화면 개발용, 시연 금지)
     verify_mode: str = "dns"
-    dns_servers: list[str] = field(default_factory=list)  # 비우면 시스템 DNS. 예: 10.253.53.53, 127.0.0.1:15353
+    # 점검 DNS. 소유권 확인·자산 찾기·점검 HTTP·TLS 접속이 모두 이 DNS로 주소를 찾는다.
+    # 비우면 시스템 DNS. 예: 10.253.53.53, 127.0.0.1:15353
+    dns_servers: list[str] = field(default_factory=list)
 
     # 점검 엔진. fixture = 시연 시나리오를 돌려주는 가짜 엔진, 또는 "패키지.모듈:클래스"
     engine: str = "fixture"

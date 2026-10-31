@@ -6,17 +6,20 @@
 - GET만 보낸다. 요청마다 10초 제한, 대상 호스트당 초당 2건으로 속도를 제한한다.
 - 요청을 보낼 때마다 Budget.requests_used를 올리고, 점검 1회 300건 상한을 넘으면 더 보내지 않는다.
 - 요청 사이 Budget.check()로 중지 요청·제한 시간을 확인한다(ScanStopped는 그대로 올려 보낸다).
+- 점검 DNS(A2D_DNS_SERVER)를 정했으면 자산 찾기·HTTP·TLS가 모두 그 DNS로 주소를 찾는다.
+  자산은 점검 DNS로 찾고 접속은 시스템 DNS로 하면, 노트북에서 직접 띄울 때 시연 대상에 닿지 못한다.
 """
 
 from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import ipaddress
 import logging
 import ssl
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 import httpx
 
@@ -71,6 +74,54 @@ class Tls(Protocol):
     def inspect(self, host: str, port: int = 443) -> CertInfo: ...
 
 
+# 이름 → 주소 목록. 점검 DNS의 DnsResolver.a를 넘긴다. 비어 있으면 연결하지 않는다.
+Resolve = Callable[[str], list[str]]
+
+
+def _is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
+        return False
+
+
+def _pinned_address(resolve: Resolve, host: str) -> str | None:
+    try:
+        addrs = resolve(host)
+    except Exception as e:  # DNS 무응답도 '연결 실패'로 본다. 점검 전체를 멈추지 않는다
+        log.info("점검 DNS 조회 실패 %s: %s", host, type(e).__name__)
+        return None
+    return addrs[0] if addrs else None
+
+
+class DnsPinnedTransport(httpx.AsyncBaseTransport):
+    """접속할 주소를 점검 DNS로 찾는 httpx 전송 계층.
+
+    URL의 호스트만 주소로 바꾸고, Host 헤더와 TLS 이름(SNI)은 원래 이름을 그대로 쓴다.
+    응답의 request·url은 원래 요청이라(httpx가 바깥 요청을 붙인다) 발견 위치에는 이름이 남는다.
+    """
+
+    def __init__(self, resolve: Resolve, inner: httpx.AsyncBaseTransport):
+        self._resolve = resolve
+        self._inner = inner
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        host = request.url.host
+        if _is_ip(host):
+            return await self._inner.handle_async_request(request)
+        addr = await asyncio.to_thread(_pinned_address, self._resolve, host)
+        if addr is None:
+            raise httpx.ConnectError(f"점검 DNS에서 {host}의 주소를 찾지 못함", request=request)
+        pinned = httpx.Request(request.method, request.url.copy_with(host=addr), headers=request.headers,
+                               stream=request.stream,
+                               extensions={**request.extensions, "sni_hostname": host})
+        return await self._inner.handle_async_request(pinned)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
 # ==================================================================== HTTP
 
 class HttpClient:
@@ -117,15 +168,20 @@ class HttpClient:
         self._last_at[host] = time.monotonic()
 
 
-def open_http_client(verify: bool | str = False) -> httpx.AsyncClient:
+def open_http_client(verify: bool | str = False, resolve: Resolve | None = None) -> httpx.AsyncClient:
     """점검용 httpx 클라이언트. verify는 호출부(A2D_CA_BUNDLE)가 정한다.
+
+    resolve를 주면 접속 주소를 그 함수(점검 DNS)로 찾는다. 없으면 시스템 DNS를 쓴다.
 
     기본은 검증을 끈다. 외부 노출 점검은 자체 서명·만료 인증서를 쓰는 서버도 내용을 읽어야 하고
     (그런 서버가 바로 점검 대상이다), 인증서 유효성은 #28이 따로 본다(target/README "결함 상태의 TLS").
     운영자가 CA 묶음 경로를 넣으면 그 CA로 검증한다. 이때 자체 서명 대상은 내용 조회가 실패하고 #28만 남는다.
     """
+    transport = None
+    if resolve is not None:
+        transport = DnsPinnedTransport(resolve, httpx.AsyncHTTPTransport(verify=verify))
     return httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT,
-                             follow_redirects=False, verify=verify)
+                             follow_redirects=False, verify=verify, transport=transport)
 
 
 # ==================================================================== DNS
@@ -182,8 +238,9 @@ class DnsResolver:
 class TlsInspector:
     """표준 ssl로 인증서를 받아 만료·발급자·이름 일치를 본다. 실제 핸드셰이크 1회."""
 
-    def __init__(self, timeout: float = 5.0):
+    def __init__(self, timeout: float = 5.0, resolve: Resolve | None = None):
         self.timeout = timeout
+        self._resolve = resolve  # 점검 DNS. 없으면 시스템 DNS
 
     def inspect(self, host: str, port: int = 443) -> CertInfo:
         import socket
@@ -191,8 +248,13 @@ class TlsInspector:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False  # 이름 불일치도 '오류'가 아니라 정보로 보려고 직접 판정한다
         ctx.verify_mode = ssl.CERT_NONE
+        addr = host
+        if self._resolve is not None and not _is_ip(host):
+            addr = _pinned_address(self._resolve, host)
+            if addr is None:
+                return CertInfo(error="점검 DNS에서 주소를 찾지 못함")
         try:
-            with socket.create_connection((host, port), timeout=self.timeout) as sock:
+            with socket.create_connection((addr, port), timeout=self.timeout) as sock:
                 with ctx.wrap_socket(sock, server_hostname=host) as ss:
                     der = ss.getpeercert(binary_form=True)
                     version = ss.version()
