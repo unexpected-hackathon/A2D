@@ -108,10 +108,18 @@ async def www_actuator_env(request: Request):
     return Response(pages.actuator_env(), media_type="application/json")
 
 
+async def www_internal_reports(request: Request):
+    """#16 숨은 경로의 입구. robots.txt(Disallow: /internal/reports/)가 가리키는 사내 보고서 목록이고,
+    내보내기 주소로 가는 링크가 있다. 추가 점검이 이름을 추측하지 않고 단서만 따라가 닿게 하려는 단계다."""
+    if c.fixed(16):
+        return need_auth()
+    return html(pages.internal_reports())
+
+
 async def www_internal_export(request: Request):
-    """#16 숨은 경로: 사내 보고서용 지원자 내보내기. robots.txt(Disallow: /internal/reports/)와
+    """#16 숨은 경로: 사내 보고서용 지원자 내보내기. robots.txt → /internal/reports/ 목록의 링크, 그리고
     소스맵 주석에만 나오고 화면·API 문서에는 없다. 기본 점검은 이 경로를 모르고, 추가 점검(Attack 에이전트)이
-    robots.txt 단서를 따라가야 찾는다. #16을 고치면 /api/v1/applicants와 함께 막힌다(같은 조치)."""
+    단서를 따라가야 찾는다. #16을 고치면 /api/v1/applicants와 함께 막힌다(같은 조치)."""
     if c.fixed(16):
         return need_auth()
     rows = [{k: a[k] for k in ("id", "name", "email", "phone", "desired_job")} for a in APPLICANTS]
@@ -150,6 +158,7 @@ www = Starlette(
         Route("/actuator/env", www_actuator_env),
         Route("/admin", admin_page),
         Route("/admin/", admin_page),
+        Route("/internal/reports/", www_internal_reports),
         Route("/internal/reports/export", www_internal_export),
     ],
     exception_handlers=HANDLERS,

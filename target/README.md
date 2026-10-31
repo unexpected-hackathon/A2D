@@ -41,10 +41,10 @@ Docker Compose로 띄우고, 컨테이너는 전용 네트워크 `a2d-demo`(10.2
 | --- | --- | --- | --- |
 | #8 | 웹 공개 경로에 남은 가상 지원자·이력서 백업 파일 | `www` `/backup.zip`, `/db.sql` | 93 (C=4) |
 | #16 | 인증 없이 가상 지원자 이메일·전화번호를 반환하는 더미 API | `api` `/api/v1/applicants`, `/api/v1/applicants/{id}` | 100 |
-| #16 (숨은 경로) | 사내 보고서용 지원자 내보내기. `robots.txt`와 소스맵 주석에만 나온다 | `www` `/internal/reports/export` | 100 (추가 점검이 찾았을 때만) |
+| #16 (숨은 경로) | 사내 보고서용 지원자 내보내기. `robots.txt`가 숨긴 `/internal/reports/` 목록 페이지의 링크와 소스맵 주석에만 나온다 | `www` `/internal/reports/` → `/internal/reports/export` | 100 (추가 점검이 찾았을 때만) |
 | #18 | 외부에서 열리는 채용 담당자 관리자 로그인 화면 | `admin` 루트, `www` `/admin` | 73 |
 
-숨은 내보내기 경로는 화면 코드·API 문서에 나오지 않아 기본 점검(`LiveEngine`)은 찾지 않는다. 추가 점검(Attack 에이전트)이 `robots.txt`의 `Disallow: /internal/reports/` 단서를 따라가야 찾는 결함이다. 그래서 LLM이 없거나 추가 점검을 건너뛰면 아래 예상 점수가 그대로이고, 에이전트가 찾으면 1회차 점수가 더 낮아진다. `#16`을 고치면 두 경로가 함께 401이 되므로 세 가지 조치 뒤 100 A는 같다.
+숨은 내보내기 경로는 화면 코드·API 문서에 나오지 않아 기본 점검(`LiveEngine`)은 찾지 않는다. 추가 점검(Attack 에이전트)이 `robots.txt`의 `Disallow: /internal/reports/` → 목록 페이지의 내보내기 링크 순서로 단서를 따라가야 찾는 결함이다. 이름을 추측하지 않고 닿도록 목록 페이지를 둔다. 그래서 LLM이 없거나 추가 점검을 건너뛰면 아래 예상 점수가 그대로이고, 에이전트가 찾으면 1회차 점수가 더 낮아진다. `#16`을 고치면 두 경로가 함께 401이 되므로 세 가지 조치 뒤 100 A는 같다.
 
 점검점수설계 2.3 기본값으로 계산한 예상 안전 점수는 **20 F → (#16) 30 F → (#8) 49 D → (#18) 100 A**다. `www`는 대표 도메인이라 C=4로 계산했다. 점검 엔진이 `www`를 C=5로 추정하면 #8도 100점이 되어 #16과 동점이 되고, 조치 시간이 짧은 #8이 먼저 온다(20 F → 26 F → 49 D → 100 A).
 
@@ -62,7 +62,7 @@ Docker Compose로 띄우고, 컨테이너는 전용 네트워크 `a2d-demo`(10.2
 | 12 | `/static/js/app.js`에 가짜 AWS 키(`AKIA…`)와 Stripe 키(`sk_live_…`) | 키 제거 |
 | 13 | `/static/js/app.js.map` 공개, 안에 같은 키 | 404, `sourceMappingURL` 제거 |
 | 14 | `jobnest-resumes.s3.ap-northeast-2.amazonaws.com` 버킷 목록 | 403 AccessDenied |
-| 16 | `api`가 인증 없이 지원자 이메일·전화번호 반환. 숨은 `www` `/internal/reports/export`도 같다 | 둘 다 401 |
+| 16 | `api`가 인증 없이 지원자 이메일·전화번호 반환. 숨은 `www` `/internal/reports/`(목록)·`/internal/reports/export`도 열림 | 모두 401 |
 | 17 | `api`의 `/swagger`, `/openapi.json` | 404 |
 | 18 | `admin` 루트와 `www/admin`에 채용 담당자 로그인 화면 | 403 |
 | 19 | `staging`, `dev`에 `DEBUG=True` 배너 | 두 호스트 전체 403 |
