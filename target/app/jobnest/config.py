@@ -7,7 +7,7 @@
 import hashlib
 import os
 
-DOMAIN = os.environ.get("DEMO_DOMAIN", "trip.hyki.me").strip().strip(".").lower()
+DOMAIN = os.environ.get("DEMO_DOMAIN", "jobnest.test").strip().strip(".").lower()
 
 # 이름이 정해진 하위 자산. DNS 영역 파일과 인증서 SAN, 호스트 라우팅이 모두 이 표를 쓴다.
 HOST_WWW = f"www.{DOMAIN}"

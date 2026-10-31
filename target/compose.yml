@@ -11,7 +11,7 @@ x-app: &app
     - path: .env
       required: false
   environment:
-    DEMO_DOMAIN: ${DEMO_DOMAIN:-trip.hyki.me}
+    DEMO_DOMAIN: ${DEMO_DOMAIN:-jobnest.test}
     PROXY_IP: ${PROXY_IP:-10.253.53.80}
 
 services:
@@ -34,7 +34,7 @@ services:
     command: ["-conf", "/etc/coredns/Corefile"]
     restart: unless-stopped
     environment:
-      DEMO_DOMAIN: ${DEMO_DOMAIN:-trip.hyki.me}
+      DEMO_DOMAIN: ${DEMO_DOMAIN:-jobnest.test}
     volumes:
       - ./dns/Corefile:/etc/coredns/Corefile:ro
       - state:/state:ro

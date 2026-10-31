@@ -8,11 +8,11 @@ A2D가 점검하는 시연 대상. 보안 전담 인력이 부족한 소규모 �
 
 ## 가상 서비스 구성
 
-도메인은 `trip.hyki.me`(`.env`의 `DEMO_DOMAIN`으로 바꿀 수 있다). 실제 공개 도메인이지만, 이 이름은 시연 DNS를 쓰는 컨테이너와 기기 안에서만 이 서버를 가리킨다. 공개 DNS에 이 서버를 가리키는 레코드를 만들지 않는다.
+도메인은 `jobnest.test`다. `.test`는 테스트용으로 예약된 최상위 도메인(RFC 6761)이라 인터넷에서는 풀리지 않고, 시연 DNS를 쓰는 컨테이너와 기기 안에서만 이 서버를 가리킨다. `.env`의 `DEMO_DOMAIN`으로 바꿀 수 있지만 실제 공개 도메인은 쓰지 않는다.
 
 | 자산 | 역할 | 중요도 예시 |
 | --- | --- | --- |
-| `trip.hyki.me`, `www` | 채용 공고와 지원서 작성 화면 | 5: 개인정보 입력 |
+| `jobnest.test`, `www` | 채용 공고와 지원서 작성 화면 | 5: 개인정보 입력 |
 | `api` | 지원자·지원 이력 조회 API | 5: 개인정보 응답 |
 | `admin` | 채용 담당자 관리 화면 | 4: 관리자 도구 |
 | `staging`, `dev` | 개발·테스트 채용 서비스 | 3: 테스트 자산 |
@@ -120,7 +120,7 @@ A2D 서비스(`apps/web`·`apps/api`)와 타겟은 같은 노트북에서 띄운
 | 2. 점검 (Attack) | — | 20 F, 오늘 할 일 #16 → #8 → #18 |
 | 3. 조치 (Defense) | `./demo.sh fix 16 8 18` | |
 | 4. 재점검 | — | 100 A (하나씩 고치면 26 F → 49 D → 100 A) |
-| 5. 감시 | `./demo.sh test-server on` — `test.trip.hyki.me`가 디버그 표시와 함께 새로 열린다 | `new_asset` 알림, #19 새 발견 |
+| 5. 감시 | `./demo.sh test-server on` — `test.jobnest.test`가 디버그 표시와 함께 새로 열린다 | `new_asset` 알림, #19 새 발견 |
 
 - 전날 시연 노트북에서 인터넷이 될 때 `./demo.sh up`을 한 번 해 이미지를 받아 둔다. 두 번째 노트북도 같다.
 - 프리셋은 #28을 고친 상태(시연 CA 인증서)로 둔다. 점검 엔진이 시연 CA를 믿지 않으면 #28이 자체 서명으로 하나 더 잡혀 점수가 달라진다.
@@ -141,7 +141,7 @@ networks:
     external: true
 ```
 
-- **소유권 확인(FR-01):** API 명세(PR #12)의 `POST /domains`가 주는 `txt_record`(이름 `_a2d-verify.<도메인>`, 값 `a2d-verify=<16자리>`)를 그대로 넣는다. `./demo.sh verify a2d-verify=7f3c9e21b4d84a6c` → `_a2d-verify.trip.hyki.me TXT "a2d-verify=7f3c9e21b4d84a6c"`. 이름이 바뀌면 `.env`의 `A2D_VERIFY_NAME`을 고친다.
+- **소유권 확인(FR-01):** API 명세(PR #12)의 `POST /domains`가 주는 `txt_record`(이름 `_a2d-verify.<도메인>`, 값 `a2d-verify=<16자리>`)를 그대로 넣는다. `./demo.sh verify a2d-verify=7f3c9e21b4d84a6c` → `_a2d-verify.jobnest.test TXT "a2d-verify=7f3c9e21b4d84a6c"`. 이름이 바뀌면 `.env`의 `A2D_VERIFY_NAME`을 고친다.
 - **결함 상태의 TLS:** #28이 켜져 있으면 인증서가 자체 서명이다. 엔진이 인증서 검증을 켠 채 내용을 받으면 HTTPS 점검이 모두 실패하고 #28만 나온다. 내용 조회는 검증을 끄고(또는 실패해도 계속) 하고, 인증서는 #28에서 따로 평가한다.
 - **인증서(#28):** 점검 엔진이 시연 CA를 믿게 해야 고친 상태가 "정상"으로 보인다. `./demo.sh ca > a2d-demo-ca.crt`로 받아 엔진의 CA 묶음에 더한다(예: Python `ssl`·`httpx`의 `verify=`).
 - **고친 상태의 판정:** 고친 상태의 응답 코드(401·403·404)는 위 표와 같다. 점검 엔진의 판정 기준을 이 표에 맞춘다.
@@ -149,9 +149,9 @@ networks:
 
 ### 브라우저로 보기
 
-`trip.hyki.me`는 공개 DNS에서 다른 곳(홈 서버)을 가리키므로, 시연 DNS를 보게 하지 않으면 하위 도메인이 열리지 않는다.
+`jobnest.test`는 인터넷 DNS에 없는 이름이라, 시연 DNS를 보게 하지 않으면 열리지 않는다.
 
-- **리눅스:** `./demo.sh dns-on`(sudo). `*.trip.hyki.me` 질의만 시연 DNS로 보낸다. 스택을 다시 띄우면 다시 실행하고, 끌 때는 `./demo.sh dns-off`.
+- **리눅스:** `./demo.sh dns-on`(sudo). `*.jobnest.test` 질의만 시연 DNS로 보낸다. 스택을 다시 띄우면 다시 실행하고, 끌 때는 `./demo.sh dns-off`.
 - **macOS·Windows·원격:** 브라우저용 프록시 `browse`(`127.0.0.1:18888`)를 쓴다. 시연 DNS로 이름을 풀어 주므로 hosts 수정도 sudo도 필요 없고, 시연 도메인만 통과시킨다. 원격이면 먼저 `ssh -L 18888:127.0.0.1:18888 <사용자>@<서버>`로 터널을 연다.
   ```bash
   # 시연 전용 크롬 창 (macOS)
