@@ -39,7 +39,10 @@ set_var() {
 get_var() { grep "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- || true; }
 
 apply() {
-  docker compose up -d --build
+  # app·init·browse가 같은 이미지(a2d-target-app:local)를 쓴다. up --build는 셋을 동시에 빌드하다
+  # "image already exists"로 실패하므로, app 이미지만 먼저 한 번 빌드하고 나머지는 그 이미지를 쓴다.
+  docker compose build app
+  docker compose up -d
   # init(영역 파일·인증서)이 끝난 뒤 nginx가 새 인증서를 읽게 한다.
   local i
   for i in $(seq 1 30); do
