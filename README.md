@@ -56,13 +56,14 @@ cp apps/api/.env.example apps/api/.env   # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD�
 | `up` | `target/demo.sh up`·`preset demo` → `apps/api`에서 `docker compose up -d --build` → `VITE_USE_MOCK=false`로 화면을 빌드해 `vite preview`로 띄운다. 화면 주소가 `A2D_WEB_ORIGIN`에 없으면 띄우기 전에 멈춘다 |
 | `reset` | 새 테이크 준비. 결함을 시연 프로필로 되돌리고 백엔드 데이터(점검 기록·등록 도메인)를 지운다. 도메인을 다시 등록하고 `verify`부터 한다 |
 | `verify [값]` | 값을 비우면 `apps/api/.env` 계정으로 백엔드에 로그인해 시연 도메인의 TXT 값을 읽어 `target/demo.sh verify`에 넘긴다 |
+| `restart-api` | `apps/api/.env`를 고친 뒤(엔진, LLM 주소 등) 백엔드만 다시 띄운다. 점검 기록과 결함 상태는 그대로 둔다 |
 | `txt-check on\|off` | 소유권 TXT 확인을 켜고(`A2D_VERIFY_MODE=dns`) 끈다(`trust`, "확인"만 누르면 통과). `apps/api/.env`를 고치고 백엔드가 떠 있으면 백엔드만 다시 띄운다(점검 기록은 남고 로그인은 풀린다). 값 없이 쓰면 지금 상태를 보여 주고, `status`에도 나온다 |
 | `fix`·`break`·`preset`·`test-server`·`check`·`dns-on`·`dns-off` | `target/demo.sh`에 그대로 넘긴다 |
 | `logs api\|web\|target` | 로그 보기. 화면 로그와 프로세스 번호는 `.demo/`에 둔다 |
 
 - 화면 포트는 `A2D_WEB_PORT`(기본 4173)로 바꾼다. 바꾼 주소는 `apps/api/.env`의 `A2D_WEB_ORIGIN`에도 넣는다.
 - LLM은 GPU 서버에 VPN과 SSH 터널로 붙어야 해서 스크립트가 터널을 열지 않는다. `status`가 OS에 맞는 `A2D_LLM_BASE_URL`과 `model/.env`의 `TUNNEL_BIND`를 알려 준다([model/README.md](model/README.md#백엔드에서-부르기)). LLM이 없으면 조치 가이드는 기본 가이드로 나간다.
-- 기본 점검 엔진(`A2D_ENGINE=fixture`)은 시연 시나리오를 돌려주는 가짜 엔진이라 피공격 서버에 점검 요청을 보내지 않는다.
+- 점검 엔진은 기본으로 `LiveEngine`이다. 피공격 서버에 읽기 요청만 보내 실제로 점검하고, 결과는 결함 상태대로 나온다. 피공격 서버를 띄울 수 없을 때는 `A2D_ENGINE=fixture`(시연 시나리오를 돌려주는 가짜 엔진)로 바꾼다([docs/A2D_시연진행.md](docs/A2D_시연진행.md) 3절).
 
 테이크를 반복하는 순서와 단계별 화면·명령은 [docs/A2D_시연진행.md](docs/A2D_시연진행.md)에, 피공격 서버의 결함별 세부는 [target/README.md](target/README.md) "시연 순서"에 있다. 그 표의 결함 조작(`preset`·`fix`·`test-server`)은 루트에서 `./a2d-demo.sh`로도 쓸 수 있다.
 

@@ -1,0 +1,16 @@
+# 시연 대상(target)과 함께 띄울 때 compose.yml 위에 얹는다. target을 먼저 띄운다: (cd ../../target && ./demo.sh up)
+# target의 시연 네트워크(a2d-demo)에 붙고 시연 DNS를 쓴다. 시연 DNS는 jobnest.test만 직접 답하고
+# 나머지 이름은 일반 DNS로 넘기므로, 이 상태에서도 실제 도메인을 점검할 수 있다.
+services:
+  api:
+    environment:
+      # .env의 A2D_DNS_SERVER는 노트북 직접 실행용이라 컨테이너에서는 이 값으로 덮는다
+      A2D_DNS_SERVER: ${A2D_DEMO_DNS_IP:-10.253.53.53}
+    dns:
+      - ${A2D_DEMO_DNS_IP:-10.253.53.53}
+    networks:
+      - a2d-demo
+
+networks:
+  a2d-demo:
+    external: true
