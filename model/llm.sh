@@ -2,6 +2,7 @@
 # A2D LLM 서빙 스크립트. Qwen3-8B를 vLLM으로 띄운다. model/ 안의 파일을 기준으로 동작한다.
 #
 # GPU 서버에서
+#   ./llm.sh deploy        한 번에: setup → download → up → check (이미 끝난 단계는 건너뛴다)
 #   ./llm.sh preflight     서버 환경 점검 (외부 인터넷, sudo, Docker, Python, GPU, 디스크)
 #   ./llm.sh setup         uv와 Python 가상 환경을 만들고 vLLM 설치 (sudo 불필요)
 #   ./llm.sh download      모델 가중치를 MODEL_DIR에 내려받기 (약 16GB)
@@ -236,11 +237,29 @@ cmd_check() {
     "$(python_bin)" check.py ${args[@]+"${args[@]}"}
 }
 
+# GPU 서버에서 처음부터 확인까지 한 번에 한다. 중간에 실패하면 거기서 멈추고, 다시 실행하면 끝난 단계는 건너뛴다.
+cmd_deploy() {
+  local evidence="$LOG_DIR/evidence"
+  log "[1/4] 설치"
+  if [ -x "$VENV/bin/vllm" ] && [ "$("$VENV/bin/python" -c 'import vllm; print(vllm.__version__)' 2>/dev/null)" = "$VLLM_VERSION" ]; then
+    log "  vLLM $VLLM_VERSION 이미 설치됨. 건너뛴다"
+  else
+    cmd_setup
+  fi
+  log "[2/4] 모델 내려받기 (이미 받은 파일은 건너뛴다)"
+  cmd_download
+  log "[3/4] 실행"
+  cmd_up
+  log "[4/4] 확인 (결과 저장: $evidence)"
+  cmd_check --thinking --save "$evidence"
+  log "끝. 내 PC에서 ./llm.sh tunnel → ./llm.sh check --local"
+}
+
 main() {
   local cmd="${1:-}"; shift || true
   case "$cmd" in
-    preflight|setup|download|up|down|status|logs|tunnel|check) load_env; "cmd_$cmd" "$@" ;;
-    *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+    deploy|preflight|setup|download|up|down|status|logs|tunnel|check) load_env; "cmd_$cmd" "$@" ;;
+    *) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 1 ;;
   esac
 }
 
