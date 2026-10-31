@@ -41,6 +41,22 @@ log = logging.getLogger("a2d")
 
 FINISHED = ("done", "stopped")
 TERMINAL = ("done", "stopped", "failed")
+
+# 추가 점검(Attack 에이전트)을 건너뛰거나 일부만 했을 때 화면에 보이는 문장. 원인은 attack.reason에 남는다.
+# 가짜 엔진(fixture)은 시연 화면에 그대로 나오므로 원인을 문장에 쓰지 않는다.
+ATTACK_MESSAGES = {
+    "llm_not_configured": "AI 서버가 연결되지 않아 추가 점검을 건너뛰었습니다. 기본 점검 결과로 점수를 냈습니다.",
+    "llm_unavailable": "AI 서버가 응답하지 않아 추가 점검을 건너뛰었습니다. 기본 점검 결과로 점수를 냈습니다.",
+    "fixture_engine": "추가 점검을 건너뛰고 기본 점검 결과로 점수를 냈습니다.",
+    "no_handlers": "추가 점검을 건너뛰고 기본 점검 결과로 점수를 냈습니다.",
+    "llm_interrupted": "추가 점검 중 AI 서버 응답이 끊겨 일부만 확인했습니다.",
+    "error": "추가 점검 중 오류가 나 기본 점검 결과로 점수를 냈습니다.",
+}
+
+
+def attack_state(status: str, reason: str | None = None) -> dict:
+    """점검 결과의 attack 필드. status: pending·running·done·skipped·failed·stopped."""
+    return {"status": status, "reason": reason, "message": ATTACK_MESSAGES.get(reason) if reason else None}
 STAGE_NAMES = {
     "queued": "대기",
     "discovering": "자산 찾는 중",
@@ -227,6 +243,7 @@ class Service:
             "safety_score": None,
             "grade": None,
             "error_message": None,
+            "attack": attack_state("pending"),
         })
         self._budgets[scan["scan_id"]] = budget
         self._live[scan["scan_id"]] = scan
@@ -294,11 +311,17 @@ class Service:
                                       "situation": f["situation_key"]}
                                      for f in findings.values()],
                     }
-                    await self._run_attack(ctx, summary)
+                    scan["attack"] = attack_state("running")
+                    reason = await self._run_attack(ctx, summary)
+                    skipped = reason in ("llm_not_configured", "fixture_engine", "no_handlers", "llm_unavailable")
+                    scan["attack"] = attack_state("skipped" if skipped else "done",
+                                                  None if reason == agents.ATTACK_DONE else reason)
                 except ScanStopped:
+                    scan["attack"] = attack_state("stopped")
                     raise
                 except Exception:  # 에이전트가 실패해도 기본 점검 결과로 진행한다
                     log.exception("추가 점검 실패: %s", scan_id)
+                    scan["attack"] = attack_state("failed", "error")
                 set_stage("agent", STAGE_NAMES["agent"], 1, 1)
             except ScanStopped as e:
                 log.info("점검 %s 멈춤: %s", scan_id, e)
@@ -332,25 +355,31 @@ class Service:
             scan.update(status="failed", error_message=f"점검 중 오류가 발생했습니다: {type(e).__name__}")
             scan["stage"] = {**scan["stage"], "name": STAGE_NAMES["failed"]}
         finally:
+            if scan.get("attack", {}).get("status") in ("pending", "running"):
+                # 기본 점검을 끝내지 못해(실패·중지) 추가 점검까지 가지 못했다
+                scan["attack"] = attack_state("skipped", None)
             scan["finished_at"] = now_iso()
             self._save_live(scan)
             self._live.pop(scan_id, None)
             self._budgets.pop(scan_id, None)
             self._tasks.pop(scan_id, None)
 
-    async def _run_attack(self, ctx: EngineContext, summary: dict) -> None:
+    async def _run_attack(self, ctx: EngineContext, summary: dict) -> str:
         """추가 점검(Attack 에이전트)을 돌린다. 실제 대상에 요청하는 핸들러는 진짜 엔진일 때만 붙인다.
 
         fixture 엔진은 시연용 가짜 결과라 대상에 요청을 보내지 않는다. 그래서 핸들러를 붙이지 않고,
         run_attack은 핸들러가 없으면 추가 점검을 건너뛴다(도구 호출·LLM 요청도 하지 않는다).
         진짜 엔진(A2D_ENGINE=패키지.모듈:클래스)일 때만 점검용 httpx 클라이언트를 열어 핸들러를 끼운다.
+        돌려주는 값은 끝난 이유다(agents.ATTACK_* 또는 "fixture_engine").
         """
-        if not self.llm.configured or self.s.engine == "fixture":
-            return
+        if not self.llm.configured:
+            return agents.ATTACK_NOT_CONFIGURED
+        if self.s.engine == "fixture":
+            return "fixture_engine"
         resolve = DnsResolver(self.s.dns_servers).a if self.s.dns_servers else None  # 엔진과 같은 점검 DNS
         async with attack_handlers.open_client(self.s.ca_bundle or False, resolve=resolve) as client:
             handlers = attack_handlers.build_attack_handlers(ctx, client)
-            await agents.run_attack(self.llm, ctx, summary, handlers=handlers)
+            return await agents.run_attack(self.llm, ctx, summary, handlers=handlers)
 
     @staticmethod
     def scan_api(scan: dict) -> dict:
@@ -365,6 +394,7 @@ class Service:
             "safety_score": scan["safety_score"],
             "grade": scan["grade"],
             "error_message": scan["error_message"],
+            "attack": scan.get("attack"),  # 이 필드가 생기기 전 점검은 null
         }
 
     def get_scan(self, scan_id: str) -> dict:
@@ -517,7 +547,8 @@ class Service:
                     "asset_id": f["asset_id"], "finding_id": f["finding_id"]}
                    for f in sorted(findings, key=lambda f: -f["raw"]) if f["status"] == "new"]
         out.update(
-            latest_scan={"scan_id": scan["scan_id"], "finished_at": scan["finished_at"], "status": scan["status"]},
+            latest_scan={"scan_id": scan["scan_id"], "finished_at": scan["finished_at"], "status": scan["status"],
+                         "attack": scan.get("attack")},
             safety_score=scan["safety_score"], grade=scan["grade"], org_risk_score=scan["org_risk_score"],
             score_formula=scan["score_formula"], asset_count=len(assets),
             today_tasks=self._task_rows(scan), alerts=alerts,

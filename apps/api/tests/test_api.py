@@ -271,3 +271,32 @@ def test_asset_ids_unique_across_domains(client):
         wait_done(client, scan_id)
         ids += [a["asset_id"] for a in client.get(f"/api/v1/scans/{scan_id}/assets").json()["items"]]
     assert len(ids) == 14 and len(set(ids)) == 14
+
+
+# ------------------------------------------------------------------ 추가 점검(Attack 에이전트) 상태
+
+def test_attack_skipped_without_llm_is_reported(client):
+    """LLM이 없으면 추가 점검을 건너뛰고, 그 사실을 점검 결과와 대시보드 요약에 남긴다."""
+    login(client)
+    domain_id = setup_domain(client)
+    scan_id = client.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
+    body = wait_done(client, scan_id)
+    attack = body["attack"]
+    assert attack["status"] == "skipped" and attack["reason"] == "llm_not_configured"
+    assert "AI 서버가 연결되지 않아" in attack["message"]
+    summary = client.get(f"/api/v1/domains/{domain_id}/summary").json()
+    assert summary["latest_scan"]["attack"] == attack
+
+
+def test_attack_skipped_on_fixture_engine_hides_cause(tmp_path):
+    """가짜 엔진에서는 LLM이 있어도 건너뛴다. 시연 화면에 나가는 문장에는 원인(가짜 엔진)을 쓰지 않는다."""
+    s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
+                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0,
+                 llm_base_url="http://127.0.0.1:9/v1")  # 닫힌 포트: 조치 가이드는 바로 기본 가이드로
+    with TestClient(create_app(s), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
+        login(c)
+        domain_id = setup_domain(c)
+        body = wait_done(c, c.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"])
+    attack = body["attack"]
+    assert attack["status"] == "skipped" and attack["reason"] == "fixture_engine"
+    assert "가짜" not in attack["message"] and "fixture" not in attack["message"]
