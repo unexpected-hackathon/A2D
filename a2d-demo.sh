@@ -3,10 +3,11 @@
 #
 #   ./a2d-demo.sh up              피공격 서버(target) → 백엔드(apps/api, Docker) → 화면(apps/web) 순서로 띄우기
 #   ./a2d-demo.sh down            화면·백엔드·피공격 서버 내리기 (점검 기록은 남김)
-#   ./a2d-demo.sh status          세 부분의 상태, LLM 연결, 다음 점검이 시나리오 몇 회차인지
+#   ./a2d-demo.sh status          세 부분의 상태, 점검 엔진, LLM 연결, 다음 점검에서 나올 결과
 #   ./a2d-demo.sh reset           새 테이크 준비: 결함을 시연 프로필로 되돌리고 점검 기록을 지운다
 #   ./a2d-demo.sh verify [값]     등록 화면의 TXT 값을 시연 DNS에 넣기 (값을 비우면 백엔드에서 읽어 온다)
 #   ./a2d-demo.sh txt-check on|off  소유권 TXT 확인 켜기(dns)·끄기(trust, "확인"만 누르면 통과). 값 없이 쓰면 지금 상태
+#   ./a2d-demo.sh restart-api     apps/api/.env를 고친 뒤 백엔드만 다시 띄우기 (점검 기록·결함 상태는 그대로)
 #   ./a2d-demo.sh logs api|web|target
 #
 #   피공격 서버 조작은 target/demo.sh로 그대로 넘긴다:
@@ -39,7 +40,10 @@ api_url()    { echo "http://127.0.0.1:$(api_port)/api/v1"; }
 api_origin() { local o; o="$(api_get A2D_WEB_ORIGIN)"; o="${o%%,*}"; echo "${o:-http://localhost:5173}"; }
 
 target() { "$ROOT/target/demo.sh" "$@"; }
-api_compose() { (cd "$ROOT/apps/api" && docker compose "$@"); }
+# 시연은 항상 target의 시연 네트워크·DNS에 붙인다(compose.demo.yml). .env의 COMPOSE_FILE과 상관없이 둘 다 쓴다.
+api_compose() {
+  (cd "$ROOT/apps/api" && COMPOSE_FILE=compose.yml:compose.demo.yml COMPOSE_PATH_SEPARATOR=: docker compose "$@")
+}
 
 # ------------------------------------------------------------------ 준비 검사
 
@@ -163,7 +167,7 @@ llm_report() {
   say "   1) VPN 연결 뒤 다른 터미널에서 model/llm.sh tunnel  (model/.env: $bind)"
   say "   2) apps/api/.env: A2D_LLM_BASE_URL=$url, A2D_LLM_API_KEY=<GPU 서버 VLLM_API_KEY>, A2D_LLM_MODEL=qwen3-8b"
   # up을 다시 하면 preset demo로 고친 결함이 되살아나므로 백엔드만 다시 띄운다
-  say "   3) (cd apps/api && docker compose up -d) 로 백엔드만 다시 띄운다"
+  say "   3) ./a2d-demo.sh restart-api 로 백엔드만 다시 띄운다"
 }
 
 # ------------------------------------------------------------------ 백엔드에서 시연 상태 읽기
@@ -206,13 +210,14 @@ else:
 PY
 }
 
+# 실제 엔진(LiveEngine)은 피공격 서버의 결함 상태대로 결과가 나온다. 지금 상태로 점검하면 무엇이 나올지 알려 준다.
 # 가짜 엔진(fixture)은 끝까지 돈 점검 수로 시나리오 회차를 정한다(apps/api/a2d/engine/fixture.py).
 # 피공격 서버를 고쳤는지는 보지 않으므로, 다음 점검이 몇 회차인지 보여 줘 순서가 어긋나지 않게 한다.
 scenario_report() {
   local engine state verify finished next
   SCENARIO_FINISHED=0
   engine="$(api_get A2D_ENGINE)"
-  [ "${engine:-fixture}" = fixture ] || return 0
+  engine="${engine:-fixture}"
   state="$(demo_api state 2>/dev/null)" || { say "시연 진행: 백엔드에서 읽지 못함"; return 0; }
   verify="${state% *}"; finished="${state#* }"; next=$((finished + 1)); SCENARIO_FINISHED=$finished
   case "$verify" in
@@ -222,6 +227,11 @@ scenario_report() {
       else say "시연 진행: 소유권 확인 전 (./a2d-demo.sh verify → 화면에서 확인)"; fi
       return 0 ;;
   esac
+  if [ "$engine" != fixture ]; then
+    say "시연 진행: 끝난 점검 ${finished}회. 실제 점검이라 결과는 피공격 서버의 결함 상태대로 나옵니다"
+    say "  preset demo → 20점 F(#16 #8 #18) · fix 16 8 18 → 100점 A · 이어서 test-server on → 53점 D(#19)"
+    return 0
+  fi
   case "$next" in
     1) say "시연 진행: 다음 점검은 1회차 → #16 #8 #18, 20점 F" ;;
     2) say "시연 진행: 끝난 점검 1회. 다음 점검은 2회차 → 세 가지 해결, 100점 A (그 전에 ./a2d-demo.sh fix 16 8 18)" ;;
@@ -333,6 +343,9 @@ status_line() {
   engine="${engine:-fixture}"
   if [ "$engine" = fixture ]; then
     say "점검 엔진: fixture (시연 시나리오를 돌려주는 가짜 엔진. 피공격 서버에 점검 요청을 보내지 않음)"
+    say "  실제로 점검하려면 apps/api/.env에 A2D_ENGINE=a2d.engine.live:LiveEngine 을 넣고 ./a2d-demo.sh restart-api"
+  elif [ "$engine" = a2d.engine.live:LiveEngine ]; then
+    say "점검 엔진: 실제 점검(LiveEngine). 피공격 서버에 읽기 요청만 보낸다"
   else
     say "점검 엔진: $engine"
   fi
@@ -354,6 +367,14 @@ status() {
   if web_pid >/dev/null; then say "화면: 동작 중 ($WEB_URL)"; else say "화면: 꺼짐"; fi
 }
 
+restart_api() {
+  preflight
+  say "백엔드만 다시 띄웁니다 (apps/api/.env 반영. 진행 중인 점검이 있으면 끊기고, 로그인이 풀립니다)"
+  api_compose up -d --force-recreate api
+  wait_api
+  status_line
+}
+
 logs() {
   case "${1:-}" in
     api)    api_compose logs -f api ;;
@@ -370,7 +391,8 @@ case "${1:-}" in
   reset)   reset ;;
   verify)  shift; verify "${1:-}" ;;
   txt-check) shift; txt_check "${1:-}" ;;
+  restart-api) restart_api ;;
   logs)    shift; logs "$@" ;;
   fix|break|preset|test-server|check|dns-on|dns-off) target "$@" ;;
-  *)       sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *)       sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

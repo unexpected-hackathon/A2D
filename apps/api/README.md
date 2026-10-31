@@ -34,12 +34,23 @@ cp .env.example .env        # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD를 채운다
 
 ```bash
 (cd ../../target && ./demo.sh up && ./demo.sh preset demo)
-docker compose up -d --build       # a2d-demo 네트워크에 붙고 시연 DNS(10.253.53.53)를 쓴다
+docker compose up -d --build       # .env의 COMPOSE_FILE대로 compose.demo.yml을 얹어 a2d-demo 네트워크·시연 DNS(10.253.53.53)를 쓴다
 # 등록 화면의 TXT 값을 넣는다
 (cd ../../target && ./demo.sh verify a2d-verify=<값>)
 ```
 
 노트북에서 컨테이너 없이 띄울 때는 `A2D_DNS_SERVER=127.0.0.1:15353`으로 시연 DNS의 TXT를 확인할 수 있다.
+
+compose 파일은 둘이다. `compose.yml`은 단독 실행용으로 target 없이 뜨고 시스템 DNS를 쓴다. `compose.demo.yml`은 그 위에 얹어 target의 `a2d-demo` 네트워크와 시연 DNS를 붙인다(target을 먼저 띄워야 한다). `.env.example`의 `COMPOSE_FILE=compose.yml:compose.demo.yml`이 기본으로 둘 다 쓰고, 루트의 `a2d-demo.sh`는 `.env`와 상관없이 항상 둘 다 쓴다. 이 줄이 없는 예전 `.env`로 `docker compose`를 직접 부르면 단독 실행이 되어 `jobnest.test`를 찾지 못하니, `.env.example`에서 두 줄(`COMPOSE_FILE`·`COMPOSE_PATH_SEPARATOR`)을 옮겨 오거나 `./a2d-demo.sh restart-api`를 쓴다.
+
+### 실제 도메인만 점검할 때
+
+target 없이 백엔드만 띄워 우리가 관리하는 실제 도메인을 점검한다. 소유권은 실제 DNS에 `_a2d-verify.<도메인>` TXT 레코드를 넣어 확인한다(`A2D_VERIFY_MODE=dns`).
+
+```bash
+# .env: COMPOSE_FILE=compose.yml, A2D_ENGINE=a2d.engine.live:LiveEngine, A2D_DNS_SERVER는 비운다(시스템 DNS)
+docker compose up -d --build
+```
 
 ## 구조
 
@@ -63,9 +74,9 @@ a2d/
 
 엔진은 `engine.base.Engine`을 상속해 `run(ctx)`를 구현하고, `.env`의 `A2D_ENGINE=패키지.모듈:클래스`로 바꿔 끼운다(생성자는 `Settings`를 받는다). 엔진은 `ctx.add_asset`·`ctx.add_finding`으로 자산과 발견만 넘긴다. 발견 ID·점수·오늘 할 일·조치 가이드는 API가 만든다. 발견의 `situation`은 `catalog.SITUATIONS`의 키(예: `#16 "pii"`)이고, 증거는 가린 발췌(200자 이내)만 넘긴다.
 
-기본값 `A2D_ENGINE=fixture`는 `fixtures/demo_engine.json`을 점검 순서대로 돌려준다. target README의 시연 순서와 같다.
+`.env.example`의 기본은 `A2D_ENGINE=a2d.engine.live:LiveEngine`(실제 점검)이다. `.env`에 값이 없을 때의 코드 기본값과 테스트는 `fixture`다. `fixture`는 네트워크 요청 없이 `fixtures/demo_engine.json`을 점검 순서대로 돌려주는 가짜 엔진으로, 피공격 서버를 띄울 수 없을 때의 대비용이다(시연진행 3절).
 
-실제 대상을 점검하려면 `A2D_ENGINE=a2d.engine.live:LiveEngine`로 바꾼다. `LiveEngine`은 자산 찾기(#1~#4·#6)와 1차 점검(#8~14·#16~21·#23·#25·#27·#28·#30~32)을 읽기(GET·DNS·TLS)만으로 돈다. 모든 요청에 식별 User-Agent를 붙이고, 요청 10초·호스트당 초당 2건·점검 300건 제한을 지킨다. 외부 조회(#5·#33)와 #34는 아직 다루지 않는다. 내용 조회는 TLS 인증서를 검증하지 않는다(자체 서명·만료 인증서를 쓰는 서버도 내용을 읽어야 한다). 인증서 유효성은 #28이 TLS 핸드셰이크로 따로 본다(자체 서명·이름 불일치·만료). 운영자가 `.env`의 `A2D_CA_BUNDLE`에 CA 묶음 경로를 넣으면 #28이 그 CA로 발급 체인까지 검증해, 그 CA가 발급하지 않은 인증서도 #28로 잡는다. 이 값은 내용 조회에는 쓰지 않는다. 시연 DNS를 쓰려면 `A2D_DNS_SERVER`에 시연 DNS 주소를 넣는다(target README "A2D 점검 엔진에서 붙기"). 이 값을 넣으면 자산 찾기뿐 아니라 점검 HTTP·TLS 접속도 같은 DNS로 주소를 찾는다. 노트북에서 직접 띄우면 시연 DNS가 주는 컨테이너 주소(`10.253.53.80`)로 접속하므로, 그 주소에 닿는 Linux에서만 된다. macOS·Windows는 compose로 띄운다.
+`LiveEngine`은 자산 찾기(#1~#4·#6)와 1차 점검(#8~14·#16~21·#23·#25·#27·#28·#30~32)을 읽기(GET·DNS·TLS)만으로 돈다. 모든 요청에 식별 User-Agent를 붙이고, 요청 10초·호스트당 초당 2건·점검 300건 제한을 지킨다. 외부 조회(#5·#33)와 #34는 아직 다루지 않는다. 내용 조회는 TLS 인증서를 검증하지 않는다(자체 서명·만료 인증서를 쓰는 서버도 내용을 읽어야 한다). 인증서 유효성은 #28이 TLS 핸드셰이크로 따로 본다(자체 서명·이름 불일치·만료). 운영자가 `.env`의 `A2D_CA_BUNDLE`에 CA 묶음 경로를 넣으면 #28이 그 CA로 발급 체인까지 검증해, 그 CA가 발급하지 않은 인증서도 #28로 잡는다. 이 값은 내용 조회에는 쓰지 않는다. 시연 DNS를 쓰려면 `A2D_DNS_SERVER`에 시연 DNS 주소를 넣는다(target README "A2D 점검 엔진에서 붙기"). 이 값을 넣으면 자산 찾기뿐 아니라 점검 HTTP·TLS 접속도 같은 DNS로 주소를 찾는다. 노트북에서 직접 띄우면 시연 DNS가 주는 컨테이너 주소(`10.253.53.80`)로 접속하므로, 그 주소에 닿는 Linux에서만 된다. macOS·Windows는 compose로 띄운다.
 
 | 회차 | 내용 | 안전 점수 |
 | --- | --- | --- |
@@ -75,7 +86,7 @@ a2d/
 
 ### LLM 붙이기
 
-GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 되고, 조치 가이드와 질의응답이 LLM을 쓴다. 호출은 모두 `a2d/agents/__init__.py`에 있다. 추가 점검(`run_attack`)은 도구 호출 루프·가드 층(`a2d/agents/tools.py`)과 점검 핸들러(`a2d/agents/handlers.py`의 `probe_http`·`check_unauth_api`)까지 붙어 있다. 핸들러는 대상에 읽기(GET) 요청만 보내고(식별 User-Agent, 요청 10초·호스트당 초당 2건·점검 300건 제한), 발견은 가린 증거만 저장한다. 실제 대상에 요청하는 단계라, 시연용 가짜 엔진(`A2D_ENGINE=fixture`)에서는 추가 점검을 건너뛰고 **진짜 엔진(`A2D_ENGINE=패키지.모듈:클래스`)일 때만** 핸들러를 붙여 돈다. 아직 진짜 엔진은 없다.
+GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 되고, 조치 가이드와 질의응답이 LLM을 쓴다. 호출은 모두 `a2d/agents/__init__.py`에 있다. 추가 점검(`run_attack`)은 도구 호출 루프·가드 층(`a2d/agents/tools.py`)과 점검 핸들러(`a2d/agents/handlers.py`의 `probe_http`·`check_unauth_api`)까지 붙어 있다. 핸들러는 대상에 읽기(GET) 요청만 보내고(식별 User-Agent, 요청 10초·호스트당 초당 2건·점검 300건 제한), 발견은 가린 증거만 저장한다. 실제 대상에 요청하는 단계라, 시연용 가짜 엔진(`A2D_ENGINE=fixture`)에서는 추가 점검을 건너뛰고 **진짜 엔진(`A2D_ENGINE=패키지.모듈:클래스`, 기본 `LiveEngine`)일 때만** 핸들러를 붙여 돈다.
 
 LLM에는 발견 ID, 점검 항목, 자산 별칭, 점수 요소, 가린 증거, 팀이 쓴 기본 가이드만 보낸다. 발견 위치(URL)와 응답 원문은 보내지 않는다. 답은 vLLM 구조화 출력(`response_format` json_schema)으로 JSON만 받는다. 서버가 이를 거절하면 schema 없이 다시 보내고, 답에서 JSON을 꺼내 쓴다.
 
