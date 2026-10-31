@@ -70,7 +70,6 @@ function Guide({ scanId }: { scanId: string }) {
       <PageHeader
         eyebrow="조치 가이드"
         title="오늘 할 일, 이렇게 고치세요"
-        description="항목마다 왜 위험한지, 어떤 피해가 날 수 있는지, 어떻게 고치는지 쉬운 말로 안내합니다."
       />
 
       {guide.error && <Callout tone={guide.error.code === 'SCAN_NOT_FINISHED' ? 'informative' : 'critical'} description={guide.error.message} />}

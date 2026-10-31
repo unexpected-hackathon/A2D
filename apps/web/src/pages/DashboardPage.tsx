@@ -59,7 +59,6 @@ function Dashboard({ domainId }: { domainId: string }) {
       <PageHeader
         eyebrow={summary.data?.domain ?? '대시보드'}
         title="오늘의 외부 노출 상태"
-        description="안전 점수와 오늘 가장 먼저 고칠 3가지를 한눈에 봅니다."
       />
 
       {summary.error && (

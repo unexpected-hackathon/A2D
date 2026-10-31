@@ -52,7 +52,6 @@ function History({ domainId }: { domainId: string }) {
       <PageHeader
         eyebrow="기록"
         title="점검할수록 안전해지는 기록"
-        description="재점검마다 안전 점수가 어떻게 바뀌었는지, 무엇을 고쳤는지 확인합니다."
         actions={
           <ActionButton variant="neutralWeak" onClick={() => navigate('/export')}>
             <PrefixIcon svg={<IconDocumentArrowLeftLine />} />한 장 요약 내보내기

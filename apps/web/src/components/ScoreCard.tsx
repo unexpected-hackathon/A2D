@@ -86,9 +86,6 @@ export function ScoreCard({ summary, onRescan, scanning }: ScoreCardProps) {
           </div>
 
           <VStack gap="x3" className="a2d-score-text">
-            <Text textStyle="t4Regular" color="fg.neutralMuted">
-              가장 심각한 문제가 점수의 70%를 정하고, 나머지 문제가 쌓이면 더 내려갑니다.
-            </Text>
             {/* 등급별 발견 수 */}
             <div className="a2d-counts">
               {SEVERITY_ORDER.map((s) => (
