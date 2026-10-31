@@ -18,7 +18,7 @@ import ipaddress
 import logging
 import ssl
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 import httpx
@@ -44,6 +44,8 @@ class Fetched:
     scheme: str
     # 리다이렉트(Location)만 따로 본다. 본문은 따라가지 않는다.
     location: str | None = None
+    # Set-Cookie는 쿠키마다 따로 둔다. headers에서는 여러 줄이 쉼표로 합쳐져 쿠키별 속성을 가를 수 없다.
+    set_cookies: list[str] = field(default_factory=list)
 
     def header(self, name: str) -> str | None:
         return self.headers.get(name.lower())
@@ -64,7 +66,13 @@ class Http(Protocol):
     async def get(self, url: str) -> Fetched | None: ...
 
 
+class DnsUnavailable(Exception):
+    """DNS 서버가 답하지 않음(시간 초과·서버 오류). '레코드 없음'과 구분해, 모르는 것을 없다고 판정하지 않는다."""
+
+
 class Dns(Protocol):
+    """조회 결과가 없으면 빈 값, 서버가 답하지 않으면 DnsUnavailable을 올린다."""
+
     def a(self, name: str) -> list[str]: ...
     def cname(self, name: str) -> str | None: ...
     def txt(self, name: str) -> list[str]: ...
@@ -133,6 +141,7 @@ class HttpClient:
         self.client = client
         self.host_min_interval = host_min_interval
         self._last_at: dict[str, float] = {}
+        self.responses = 0  # 상태 코드와 상관없이 응답을 받은 횟수(대상에 닿았는지 판단)
 
     async def get(self, url: str, extra_headers: dict[str, str] | None = None) -> Fetched | None:
         self.budget.check()  # 중지 요청·제한 시간(ScanStopped)
@@ -149,6 +158,7 @@ class HttpClient:
         except httpx.HTTPError as e:
             log.info("요청 실패 %s: %s", url, type(e).__name__)
             return None
+        self.responses += 1
         body = r.content[:MAX_BODY_BYTES]
         try:
             text = body.decode(r.encoding or "utf-8", errors="replace")
@@ -157,7 +167,8 @@ class HttpClient:
         return Fetched(url=str(r.url), status=r.status_code,
                        headers={k.lower(): v for k, v in r.headers.items()},
                        text=text, scheme=httpx.URL(url).scheme,
-                       location=r.headers.get("location"))
+                       location=r.headers.get("location"),
+                       set_cookies=r.headers.get_list("set-cookie"))
 
     async def _throttle(self, host: str) -> None:
         if self.host_min_interval <= 0 or not host:
@@ -187,7 +198,10 @@ def open_http_client(verify: bool | str = False, resolve: Resolve | None = None)
 # ==================================================================== DNS
 
 class DnsResolver:
-    """dnspython 기반 조회. 설정한 DNS 서버를 쓰고, 조회 실패는 빈 결과로 돌려준다."""
+    """dnspython 기반 조회. 설정한 DNS 서버를 쓴다.
+
+    레코드가 없으면(NXDOMAIN·NoAnswer) 빈 결과, 서버가 답하지 않으면(시간 초과·SERVFAIL) DnsUnavailable.
+    """
 
     def __init__(self, servers: list[str] | None = None, timeout: float = 3.0):
         import dns.resolver  # 지역 import: 테스트 가짜는 이 클래스를 안 쓴다
@@ -209,9 +223,10 @@ class DnsResolver:
 
         try:
             return self._resolver.resolve(name, rdtype, lifetime=self._timeout)
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers,
-                dns.exception.Timeout, dns.name.EmptyLabel):
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.name.EmptyLabel):
             return None
+        except (dns.resolver.NoNameservers, dns.exception.Timeout) as e:
+            raise DnsUnavailable(f"{name} {rdtype}: {type(e).__name__}") from e
 
     def a(self, name: str) -> list[str]:
         ans = self._query(name, "A")

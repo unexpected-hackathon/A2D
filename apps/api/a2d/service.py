@@ -19,7 +19,7 @@ from . import agents
 from .agents import handlers as attack_handlers
 from .catalog import CHECKS, FIX_MINUTES, GUIDES, SITUATIONS, check_name
 from .config import Settings
-from .engine.base import Budget, Engine, EngineContext, RawAsset, RawFinding, ScanStopped
+from .engine.base import Budget, Engine, EngineContext, EngineError, RawAsset, RawFinding, ScanStopped
 from .engine.net import DnsResolver
 from .errors import ApiError, not_found, validation
 from .scoring import (
@@ -322,6 +322,11 @@ class Service:
             scan.update(status="failed", error_message="서버가 종료되어 점검이 중단되었습니다.")
             scan["stage"] = {**scan["stage"], "name": STAGE_NAMES["failed"]}
             raise
+        except EngineError as e:
+            # 엔진이 이유를 밝힌 실패. 메시지를 그대로 error_message로 보여 준다(API 명세 GET /scans/{scan_id})
+            log.warning("점검 실패: %s: %s", scan_id, e)
+            scan.update(status="failed", error_message=str(e))
+            scan["stage"] = {**scan["stage"], "name": STAGE_NAMES["failed"]}
         except Exception as e:
             log.exception("점검 실패: %s", scan_id)
             scan.update(status="failed", error_message=f"점검 중 오류가 발생했습니다: {type(e).__name__}")
