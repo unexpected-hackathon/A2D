@@ -13,7 +13,7 @@ import { useState } from 'react'
 const W = 1000
 const H = 1000
 const EDGE = 950 // 물결의 평균 위치 (0~1000)
-const AMP = 22
+const AMP = 34 // 물결 높이. 클수록 앞머리가 또렷하게 굽이친다
 
 // 오른쪽 끝이 물결인 직사각형. phase를 바꾸면 물결이 흔들린다.
 function washPath(phase: number) {
@@ -21,13 +21,15 @@ function washPath(phase: number) {
   const n = 24
   for (let i = 0; i <= n; i++) {
     const t = i / n
-    const x = EDGE + AMP * Math.sin(t * Math.PI * 1.6 + phase)
+    const x = EDGE + AMP * Math.sin(t * Math.PI * 1.8 + phase)
     pts.push(`L${x.toFixed(1)},${(t * H).toFixed(1)}`)
   }
   return `M0,0 L${EDGE},0 ${pts.join(' ')} L0,${H} Z`
 }
+// 지나가는 동안 물결이 두 번 흔들리도록 모양 셋을 번갈아 보여 준다
 const D0 = washPath(0)
 const D1 = washPath(Math.PI)
+const DUR = 1.1 // 쓸고 지나가는 시간(초)
 
 interface SheetWashProps {
   id: string // 종이 키. 바뀌면 쓸고 지나간다
@@ -50,12 +52,14 @@ export function SheetWash({ id, fill }: SheetWashProps) {
             aria-hidden="true"
             initial={{ x: reduce ? '0%' : '-104%' }}
             animate={{ x: '0%' }}
-            transition={{ duration: reduce ? 0 : 0.6, ease: [0.3, 0.9, 0.35, 1] }}
+            transition={{ duration: reduce ? 0 : DUR, ease: [0.25, 0.7, 0.3, 1] }}
             onAnimationComplete={() => setShown(incoming)}
           >
             <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
               <path d={D0} fill={incoming.fill}>
-                {!reduce && <animate attributeName="d" values={`${D0};${D1};${D0}`} dur="0.6s" repeatCount="1" />}
+                {!reduce && (
+                  <animate attributeName="d" values={`${D0};${D1};${D0};${D1};${D0}`} dur={`${DUR}s`} repeatCount="1" />
+                )}
               </path>
             </svg>
           </motion.div>
