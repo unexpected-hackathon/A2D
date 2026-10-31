@@ -29,7 +29,8 @@ APPLICANTS = {"page": 1, "total": 40, "items": [
 
 def app_js(leak: bool, sourcemap: bool) -> str:
     """target/jobnest의 app.js처럼 leak이면 비밀키를, sourcemap이면 소스맵 주석을 넣는다."""
-    cfg = ('  aws: { bucket: "jobnest-resumes", accessKeyId: "AKIAZZ2EXAMPLE9ABCD" },\n'
+    # 비밀키 형태 문자열을 저장소에 그대로 두지 않으려고 실행 중에 이어 붙인다(target/config.py와 같은 방식)
+    cfg = (f'  aws: {{ bucket: "jobnest-resumes", accessKeyId: "{"AKIA" + "ZZ2QWERTY9ABCDEF"}" }},\n'
            '  payments: { stripeKey: "sk_live_abcdEFGH1234ijklMNOP" }\n' if leak else "")
     js = (f'var JN_CONFIG = {{ apiBase: "https://api.{DOMAIN}",\n{cfg}}};\n'
           f'fetch(JN_CONFIG.apiBase + "/api/v1/applicants?page=1");\n')

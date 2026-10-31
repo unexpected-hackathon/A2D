@@ -47,8 +47,13 @@ SECRET_PATTERNS = {
     "GitHub 토큰": re.compile(r"\b(?:ghp_|github_pat_)[0-9A-Za-z_]{20,}"),
     "OpenAI 키": re.compile(r"\bsk-proj-[0-9A-Za-z_-]{10,}"),
     "Anthropic 키": re.compile(r"\bsk-ant-[0-9A-Za-z_-]{10,}"),
-    "Supabase service_role 키": re.compile(r"service_role"),
+    "개인 키 파일": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----"),
 }
+# 문서·예제에 쓰는 자리표시 키(AWS 문서의 AKIAIOSFODNN7EXAMPLE 등)는 비밀키로 보지 않는다(점검점수설계 #12 조건).
+_PLACEHOLDER = re.compile(r"example|sample|dummy|placeholder|your[_-]?|x{6,}", re.I)
+# Supabase 키는 JWT라 앞부분이 공개 키(anon)와 같다. 본문(payload)의 role이 service_role일 때만 비밀키다.
+_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.(eyJ[A-Za-z0-9_-]{8,})\.[A-Za-z0-9_-]{8,}")
+_SOURCEMAP_URL = re.compile(r"[#@]\s*sourceMappingURL=([^\s'\"*]+)")
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?<!\d)01[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)")  # 숫자 경계: 주문번호·타임스탬프 오탐 방지
@@ -314,15 +319,18 @@ class LiveEngine(Engine):
             if kinds:
                 self._add(ctx, a, 12, "secret", f"GET {js.url}",
                           f"화면 코드에 {'·'.join(kinds)} 형태 키 노출(가림)")
-            if "sourcemappingurl" in js.text.lower():
-                mapr = await http.get(url + ".map")
-                if mapr is not None and mapr.status == 200:
-                    msecret = _secret_kinds(mapr.text)
-                    if msecret:
-                        self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
-                                  f"소스맵 안에 {'·'.join(msecret)} 형태 키 노출(가림)")
-                    else:
-                        self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
+            map_url = _sourcemap_url(js.text, url)
+            if map_url is None or not map_url.startswith(f"https://{a.host}/"):
+                continue  # 소스맵이 없거나, 코드 안에 들어 있거나(data:), 다른 곳에 있다
+            mapr = await http.get(map_url)
+            if mapr is None or mapr.status != 200 or not _is_sourcemap(mapr):
+                continue  # 모르는 경로를 index.html로 돌려주는 SPA는 소스맵 공개가 아니다
+            msecret = _secret_kinds(mapr.text)
+            if msecret and not kinds:  # 같은 키가 코드와 소스맵에 다 있으면 코드 쪽 한 건으로 센다
+                self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
+                          f"소스맵 안에 {'·'.join(msecret)} 형태 키 노출(가림)")
+            elif not msecret:
+                self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
 
     # ---------------------------------------------------------------- #20
     async def _check_status_pages(self, ctx, http, a: Asset) -> None:
@@ -586,8 +594,54 @@ def _is_login(text: str) -> bool:
 
 
 def _secret_kinds(text: str) -> list[str]:
-    """비밀키 형태를 센다. 공개용 키(pk_live_·AIza 등)만 있고 비밀키가 없으면 빈 목록."""
-    return [name for name, pat in SECRET_PATTERNS.items() if pat.search(text)]
+    """비밀키 형태를 센다. 공개용 키(pk_live_·AIza·Supabase anon 등)와 문서용 예시 키는 세지 않는다."""
+    kinds = [name for name, pat in SECRET_PATTERNS.items()
+             if any(not _PLACEHOLDER.search(m.group(0)) for m in pat.finditer(text))]
+    if any(_jwt_role(m.group(1)) == "service_role" for m in _JWT.finditer(text)):
+        kinds.append("Supabase service_role 키")
+    return kinds
+
+
+def _jwt_role(payload_b64: str) -> str | None:
+    import base64
+    import json
+
+    try:
+        raw = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
+        obj = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    role = obj.get("role") if isinstance(obj, dict) else None
+    return role if isinstance(role, str) else None
+
+
+def _sourcemap_url(js_text: str, js_url: str) -> str | None:
+    """코드 끝의 sourceMappingURL 주석이 가리키는 주소. 코드에 들어 있는 소스맵(data:)은 None."""
+    from urllib.parse import urljoin
+
+    found = _SOURCEMAP_URL.findall(js_text)
+    if not found or found[-1].startswith("data:"):
+        return None
+    return urljoin(js_url, found[-1])
+
+
+def _is_sourcemap(r: Fetched) -> bool:
+    import json
+
+    if _is_html(r):
+        return False
+    try:
+        obj = json.loads(r.text)
+    except ValueError:
+        return False
+    return isinstance(obj, dict) and bool({"mappings", "sources", "sourcesContent"} & set(obj))
+
+
+def _is_html(r: Fetched) -> bool:
+    if "html" in (r.header("content-type") or ""):
+        return True
+    head = r.text[:256].lstrip().lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
 
 
 def _pii_shape(r: Fetched) -> tuple[list[str], int | None]:
