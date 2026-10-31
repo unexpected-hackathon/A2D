@@ -16,6 +16,7 @@ import dns.exception
 import dns.resolver
 
 from . import agents
+from .agents import handlers as attack_handlers
 from .catalog import CHECKS, FIX_MINUTES, GUIDES, SITUATIONS, check_name
 from .config import Settings
 from .engine.base import Budget, Engine, EngineContext, RawAsset, RawFinding, ScanStopped
@@ -284,14 +285,15 @@ class Service:
                 engine_complete = True
                 set_stage("agent", STAGE_NAMES["agent"], 0, 1)
                 try:
-                    await agents.run_attack(self.llm, ctx, {
+                    summary = {
                         "assets": [{"asset_id": a["asset_id"], "host": a["host"], "alias": a["alias"],
                                     "tags": a["tags"], "importance": a["importance"]}
                                    for a in assets.values()],
                         "findings": [{"asset_id": f["asset_id"], "check_id": f["check_id"],
                                       "situation": f["situation_key"]}
                                      for f in findings.values()],
-                    })
+                    }
+                    await self._run_attack(ctx, summary)
                 except ScanStopped:
                     raise
                 except Exception:  # 에이전트가 실패해도 기본 점검 결과로 진행한다
@@ -329,6 +331,19 @@ class Service:
             self._live.pop(scan_id, None)
             self._budgets.pop(scan_id, None)
             self._tasks.pop(scan_id, None)
+
+    async def _run_attack(self, ctx: EngineContext, summary: dict) -> None:
+        """추가 점검(Attack 에이전트)을 돌린다. 실제 대상에 요청하는 핸들러는 진짜 엔진일 때만 붙인다.
+
+        fixture 엔진은 시연용 가짜 결과라 대상에 요청을 보내지 않는다. 그래서 핸들러를 붙이지 않고,
+        run_attack은 핸들러가 없으면 추가 점검을 건너뛴다(도구 호출·LLM 요청도 하지 않는다).
+        진짜 엔진(A2D_ENGINE=패키지.모듈:클래스)일 때만 점검용 httpx 클라이언트를 열어 핸들러를 끼운다.
+        """
+        if not self.llm.configured or self.s.engine == "fixture":
+            return
+        async with attack_handlers.open_client() as client:
+            handlers = attack_handlers.build_attack_handlers(ctx, client)
+            await agents.run_attack(self.llm, ctx, summary, handlers=handlers)
 
     @staticmethod
     def scan_api(scan: dict) -> dict:
