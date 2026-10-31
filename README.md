@@ -27,7 +27,7 @@
 | [docs/A2D_상세설계.md](docs/A2D_상세설계.md) | 점검 구현 범위·안전 제한 요약, LLM 선택, Python 함수 도구 호출 설계 |
 | [docs/A2D_점검점수설계.md](docs/A2D_점검점수설계.md) | 비침습 점검 항목 34개(1차 29개), 위험·안전 점수 계산식, 항목별 기본값, 시나리오 검증 |
 | [docs/A2D_PRD.md](docs/A2D_PRD.md) | 기능 FR-01~16, 화면, AI, 비기능, 범위 밖, 마일스톤 |
-| [docs/A2D_API명세.md](docs/A2D_API명세.md) | 프런트엔드가 쓰는 백엔드 HTTP API: 엔드포인트 21개(세션 로그인 포함), 요청·응답 예시, 화면별 호출 순서 |
+| [docs/A2D_API명세.md](docs/A2D_API명세.md) | 프런트엔드가 쓰는 백엔드 HTTP API: 엔드포인트 22개(세션 로그인 포함), 요청·응답 예시, 화면별 호출 순서 |
 | [docs/A2D_정보구조도.md](docs/A2D_정보구조도.md) | 로그인과 화면 4개의 구역·이동 경로·구역별 API, 사용자 흐름, 화면 상태와 용어 |
 | [docs/research/A2D_도메인선정_근거검증_사례28건.md](docs/research/A2D_도메인선정_근거검증_사례28건.md) | 채용·인재 매칭 플랫폼을 주 타깃으로 선정한 근거와 사고 사례 28건 |
 | [docs/research/A2D_채용플랫폼_필요점검리스트.md](docs/research/A2D_채용플랫폼_필요점검리스트.md) | 채용 플랫폼 우선 점검 항목, 안전 조건, 구현 순서 |
@@ -55,3 +55,8 @@
 | CoreDNS 1.11.3 (Docker 이미지) | 피공격 서버 시연 DNS | Apache 2.0 |
 | Python 3.12 slim (Docker 이미지) | 피공격 서버 실행 환경 | PSF |
 | curl 8.11.1 (Docker 이미지) | 피공격 서버 응답 확인(`demo.sh check`) | curl 라이선스(MIT 계열) |
+| FastAPI 0.115.6 · Uvicorn 0.34.0 | A2D 백엔드 API | MIT · BSD-3-Clause |
+| httpx 0.28.1 | A2D 백엔드 LLM 상태 확인 | BSD-3-Clause |
+| dnspython 2.7.0 | A2D 백엔드 DNS TXT 소유권 확인 | ISC |
+| bcrypt 4.2.1 | A2D 백엔드 비밀번호 해시 | Apache 2.0 |
+| pytest 8.3.4 | A2D 백엔드 테스트 | MIT |
