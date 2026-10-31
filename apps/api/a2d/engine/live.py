@@ -19,8 +19,8 @@ import re
 from dataclasses import dataclass, field
 
 from ..config import Settings
-from .base import Engine, EngineContext, RawAsset, RawFinding
-from .net import (Dns, DnsResolver, Fetched, HttpClient, Tls, TlsInspector,
+from .base import Engine, EngineContext, EngineError, RawAsset, RawFinding
+from .net import (Dns, DnsResolver, DnsUnavailable, Fetched, HttpClient, Tls, TlsInspector,
                   open_http_client)
 
 log = logging.getLogger("a2d.engine.live")
@@ -75,6 +75,8 @@ KNOWN_VULNS = {
 EOL = {("php", "8.1"), ("php", "8.0"), ("php", "7.4"), ("openssl", "1.1")}
 
 EVIDENCE_LIMIT = 200
+DNS_FAILURE_LIMIT = 3  # DNS가 연달아 이만큼 답하지 않으면 자산 찾기를 그만둔다(시간 초과가 쌓이지 않게)
+REACH_PROBE_LIMIT = 3  # 자산 찾기에서 응답이 하나도 없을 때 더 두드려 볼 자산 수
 
 
 @dataclass
@@ -110,6 +112,10 @@ class LiveEngine(Engine):
         try:
             ctx.set_stage("discovering", "자산을 찾는 중", 0, 1)
             assets = await self._discover(ctx, http)
+            if not assets:
+                raise EngineError("이 도메인에서 주소가 있는 호스트를 찾지 못해 점검하지 못했습니다. "
+                                  "도메인의 DNS 레코드를 확인해 주세요.")
+            await self._ensure_reachable(http, assets)
             ctx.set_stage("discovering", "자산을 찾는 중", 1, 1)
 
             # 같은 서비스를 가리키는 꼭짓점·www 자산에 점검이 겹치지 않게, 대표 웹 자산 하나만 깊게 본다.
@@ -145,10 +151,21 @@ class LiveEngine(Engine):
         found: dict[str, Asset] = {}
 
         # #1 하위 도메인 찾기 + 꼭짓점 도메인. DNS는 블로킹이라 스레드로 보내고, 사이사이 중지를 확인한다.
+        # DNS가 답하지 않으면 '없음'으로 넘기지 않고, 연달아 실패하면 점검을 실패로 끝낸다.
+        failures = 0
         for host in [domain] + [f"{w}.{domain}" for w in SUBDOMAIN_WORDS]:
             ctx.budget.check()
-            cname = await asyncio.to_thread(self._dns.cname, host)
-            addrs = await asyncio.to_thread(self._dns.a, host)
+            try:
+                cname = await asyncio.to_thread(self._dns.cname, host)
+                addrs = await asyncio.to_thread(self._dns.a, host)
+            except DnsUnavailable as e:
+                failures += 1
+                log.info("DNS 무응답(%d/%d): %s", failures, DNS_FAILURE_LIMIT, e)
+                if failures >= DNS_FAILURE_LIMIT:
+                    raise EngineError("도메인의 DNS 서버가 응답하지 않아 점검하지 못했습니다. "
+                                      "잠시 뒤 다시 시도해 주세요.") from e
+                continue
+            failures = 0
             if not cname and not addrs:
                 continue
             found[host] = self._classify(host, domain, cname)
@@ -181,8 +198,13 @@ class LiveEngine(Engine):
                 continue
             if not host.endswith("." + domain):
                 continue
-            cname = await asyncio.to_thread(self._dns.cname, host)
-            if cname or await asyncio.to_thread(self._dns.a, host):
+            try:
+                cname = await asyncio.to_thread(self._dns.cname, host)
+                addrs = [] if cname else await asyncio.to_thread(self._dns.a, host)
+            except DnsUnavailable as e:
+                log.info("DNS 무응답, 링크로 찾은 호스트를 건너뜀: %s", e)
+                continue
+            if cname or addrs:
                 found[host] = self._classify(host, domain, cname)
                 found[host].found_by.append(2)
 
@@ -199,6 +221,21 @@ class LiveEngine(Engine):
                                    found_by=sorted(set(a.found_by)), tags=a.tags,
                                    importance=a.importance, importance_rule=a.importance_rule))
         return assets
+
+    async def _ensure_reachable(self, http: HttpClient, assets: list[Asset]) -> None:
+        """대상에 하나도 닿지 못하면 점검을 실패로 끝낸다. 아무것도 못 본 점검이 100점(A)이 되지 않게 한다.
+
+        자산 찾기에서 응답을 받았으면 바로 넘어간다. 홈페이지가 없는 도메인(API만 있는 경우 등)도 있어,
+        응답이 없을 때만 다른 자산 몇 개의 첫 화면을 더 두드려 본다.
+        """
+        if http.responses:
+            return
+        for a in [a for a in assets if a.role in ("web", "api", "admin", "dev")][:REACH_PROBE_LIMIT]:
+            await http.get(f"https://{a.host}/")
+            if http.responses:
+                return
+        raise EngineError("대상 서버에 연결하지 못해 점검하지 못했습니다. 서버가 켜져 있는지, "
+                          "점검 서버에서 도메인 주소를 찾을 수 있는지(DNS 설정) 확인해 주세요.")
 
     def _classify(self, host: str, domain: str, cname: str | None) -> Asset:
         label = host[:-len(domain) - 1] if host != domain else ""
@@ -511,8 +548,12 @@ class LiveEngine(Engine):
     # ---------------------------------------------------------------- #32
     async def _check_mail(self, ctx: EngineContext) -> None:
         domain = ctx.domain.lower().strip(".")
-        spf = _find_txt(await asyncio.to_thread(self._dns.txt, domain), "v=spf1")
-        dmarc = _find_txt(await asyncio.to_thread(self._dns.txt, f"_dmarc.{domain}"), "v=dmarc1")
+        try:
+            spf = _find_txt(await asyncio.to_thread(self._dns.txt, domain), "v=spf1")
+            dmarc = _find_txt(await asyncio.to_thread(self._dns.txt, f"_dmarc.{domain}"), "v=dmarc1")
+        except DnsUnavailable as e:
+            log.info("DNS 무응답, #32는 판정하지 않음: %s", e)  # 모르는 것을 '없음'으로 보고하지 않는다
+            return
         spf_enforces = spf is not None and ("-all" in spf or "~all" in spf)
         dmarc_enforces = dmarc is not None and ("p=quarantine" in dmarc.lower() or "p=reject" in dmarc.lower())
         if dmarc_enforces and not spf_enforces:

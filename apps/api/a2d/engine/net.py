@@ -61,7 +61,13 @@ class Http(Protocol):
     async def get(self, url: str) -> Fetched | None: ...
 
 
+class DnsUnavailable(Exception):
+    """DNS 서버가 답하지 않음(시간 초과·서버 오류). '레코드 없음'과 구분해, 모르는 것을 없다고 판정하지 않는다."""
+
+
 class Dns(Protocol):
+    """조회 결과가 없으면 빈 값, 서버가 답하지 않으면 DnsUnavailable을 올린다."""
+
     def a(self, name: str) -> list[str]: ...
     def cname(self, name: str) -> str | None: ...
     def txt(self, name: str) -> list[str]: ...
@@ -82,6 +88,7 @@ class HttpClient:
         self.client = client
         self.host_min_interval = host_min_interval
         self._last_at: dict[str, float] = {}
+        self.responses = 0  # 상태 코드와 상관없이 응답을 받은 횟수(대상에 닿았는지 판단)
 
     async def get(self, url: str, extra_headers: dict[str, str] | None = None) -> Fetched | None:
         self.budget.check()  # 중지 요청·제한 시간(ScanStopped)
@@ -98,6 +105,7 @@ class HttpClient:
         except httpx.HTTPError as e:
             log.info("요청 실패 %s: %s", url, type(e).__name__)
             return None
+        self.responses += 1
         body = r.content[:MAX_BODY_BYTES]
         try:
             text = body.decode(r.encoding or "utf-8", errors="replace")
@@ -131,7 +139,10 @@ def open_http_client(verify: bool | str = False) -> httpx.AsyncClient:
 # ==================================================================== DNS
 
 class DnsResolver:
-    """dnspython 기반 조회. 설정한 DNS 서버를 쓰고, 조회 실패는 빈 결과로 돌려준다."""
+    """dnspython 기반 조회. 설정한 DNS 서버를 쓴다.
+
+    레코드가 없으면(NXDOMAIN·NoAnswer) 빈 결과, 서버가 답하지 않으면(시간 초과·SERVFAIL) DnsUnavailable.
+    """
 
     def __init__(self, servers: list[str] | None = None, timeout: float = 3.0):
         import dns.resolver  # 지역 import: 테스트 가짜는 이 클래스를 안 쓴다
@@ -153,9 +164,10 @@ class DnsResolver:
 
         try:
             return self._resolver.resolve(name, rdtype, lifetime=self._timeout)
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers,
-                dns.exception.Timeout, dns.name.EmptyLabel):
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.name.EmptyLabel):
             return None
+        except (dns.resolver.NoNameservers, dns.exception.Timeout) as e:
+            raise DnsUnavailable(f"{name} {rdtype}: {type(e).__name__}") from e
 
     def a(self, name: str) -> list[str]:
         ans = self._query(name, "A")
