@@ -4,7 +4,8 @@
 import { Box, Grid, HStack, Text, VStack } from '@seed-design/react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ActionButton } from 'seed-design/ui/action-button'
-import { getCurrentDomainId } from '../api/currentDomain'
+import { Callout } from 'seed-design/ui/callout'
+import { resolveDomain } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import logoUrl from '../assets/a2d-logo.svg'
 import { GradeBadge, SeverityBadge } from '../components/Badges'
@@ -12,10 +13,36 @@ import { ScoreTrend } from '../components/ScoreTrend'
 import { useApi } from '../hooks/useApi'
 import { formatDateTime, formatMinutes } from '../lib/format'
 
+// 공통 틀 밖의 화면이라 현재 도메인을 직접 정한다(GET /domains).
 export function ExportPage() {
-  const domainId = getCurrentDomainId()
-  if (!domainId) return <Navigate to="/register" replace />
-  return <OnePager domainId={domainId} />
+  const resolved = useApi(resolveDomain, [])
+  if (resolved.error) return <LoadError message={resolved.error.message} onRetry={resolved.reload} />
+  if (!resolved.data) return <Loading />
+  if (!resolved.data.current) return <Navigate to="/register" replace />
+  return <OnePager domainId={resolved.data.current.domain_id} />
+}
+
+function Loading() {
+  return (
+    <Box p="x10">
+      <Text textStyle="t5Regular" color="fg.neutralMuted">
+        불러오는 중…
+      </Text>
+    </Box>
+  )
+}
+
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Box p="x10" maxWidth="640px" mx="auto">
+      <Callout
+        tone="critical"
+        title="요약을 만들지 못했습니다"
+        description={message}
+        linkProps={{ children: '다시 시도', onClick: onRetry }}
+      />
+    </Box>
+  )
 }
 
 function OnePager({ domainId }: { domainId: string }) {
@@ -37,7 +64,14 @@ function OnePager({ domainId }: { domainId: string }) {
       </HStack>
 
       <Box className="a2d-page" bg="bg.layerDefault" mx="auto" p="x10" maxWidth="794px" borderRadius="r4" boxShadow="s2">
-        {!s ? (
+        {summary.error ? (
+          <Callout
+            tone="critical"
+            title="요약을 만들지 못했습니다"
+            description={summary.error.message}
+            linkProps={{ children: '다시 시도', onClick: () => void summary.reload() }}
+          />
+        ) : !s ? (
           <Text textStyle="t5Regular" color="fg.neutralMuted">
             불러오는 중…
           </Text>

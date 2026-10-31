@@ -9,13 +9,12 @@
 import { IconDocumentArrowLeftLine } from '@karrotmarket/react-monochrome-icon'
 import { Grid, HStack, PrefixIcon, Skeleton, Text, VStack } from '@seed-design/react'
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ActionButton } from 'seed-design/ui/action-button'
 import { Badge } from 'seed-design/ui/badge'
 import { Callout } from 'seed-design/ui/callout'
 import { ResultSection } from 'seed-design/ui/result-section'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'seed-design/ui/tabs'
-import { getCurrentDomainId } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import { AuditLog } from '../components/AuditLog'
 import { GradeBadge } from '../components/Badges'
@@ -24,15 +23,15 @@ import { ScanChanges } from '../components/ScanChanges'
 import { ScoreTrend } from '../components/ScoreTrend'
 import { Surface } from '../components/Surface'
 import { useApi } from '../hooks/useApi'
+import { useDomain } from '../hooks/useDomain'
 import { useCheckName } from '../hooks/useChecks'
 import { useScan } from '../hooks/useScan'
 import { formatDateTime } from '../lib/format'
 import { FindingPanel } from '../panels/FindingPanel'
 
 export function HistoryPage() {
-  const domainId = getCurrentDomainId()
-  if (!domainId) return <Navigate to="/register" replace />
-  return <History domainId={domainId} />
+  const { domain } = useDomain()
+  return <History domainId={domain.domain_id} />
 }
 
 function History({ domainId }: { domainId: string }) {

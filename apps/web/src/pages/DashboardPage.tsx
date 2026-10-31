@@ -11,11 +11,9 @@
 import { IconBellFill } from '@karrotmarket/react-monochrome-icon'
 import { Grid, Skeleton, VStack } from '@seed-design/react'
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import { Callout } from 'seed-design/ui/callout'
 import { ActionablePageBanner } from 'seed-design/ui/page-banner'
 import { ResultSection } from 'seed-design/ui/result-section'
-import { getCurrentDomainId } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import type { Asset } from '../api/types'
 import { AssetList } from '../components/AssetList'
@@ -25,14 +23,15 @@ import { ScoreCard } from '../components/ScoreCard'
 import { Surface } from '../components/Surface'
 import { TodayTasks } from '../components/TodayTasks'
 import { useApi } from '../hooks/useApi'
+import { useDomain } from '../hooks/useDomain'
 import { useScan } from '../hooks/useScan'
 import { AssetPanel } from '../panels/AssetPanel'
 import { FindingPanel } from '../panels/FindingPanel'
 
 export function DashboardPage() {
-  const domainId = getCurrentDomainId()
-  if (!domainId) return <Navigate to="/register" replace />
-  return <Dashboard domainId={domainId} />
+  // 도메인이 없으면 AppShell(DomainProvider)이 등록 화면으로 먼저 보낸다.
+  const { domain } = useDomain()
+  return <Dashboard domainId={domain.domain_id} />
 }
 
 function Dashboard({ domainId }: { domainId: string }) {

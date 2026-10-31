@@ -6,15 +6,15 @@ import { useState } from 'react'
 import { ActionButton } from 'seed-design/ui/action-button'
 import { Badge } from 'seed-design/ui/badge'
 import { ApiError, USE_MOCK } from '../api/client'
-import { getCurrentDomainId } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import { PageHeader } from '../components/PageHeader'
 import { Surface } from '../components/Surface'
+import { useDomain } from '../hooks/useDomain'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export function DevApiPage() {
-  const domainId = getCurrentDomainId() ?? 'DOM-1'
+  const domainId = useDomain().domain.domain_id
   const [log, setLog] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
 

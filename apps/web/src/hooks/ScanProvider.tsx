@@ -9,7 +9,7 @@
 //
 // AppShell이 한 번 감싸고, 점검 진행 띠(ScanBanner)와 화면들이 useScan()으로 꺼내 쓴다.
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { api } from '../api/endpoints'
 import type { Scan } from '../api/types'
@@ -66,9 +66,13 @@ export function ScanProvider({ domainId, children }: { domainId: string | null; 
       await check(started.scan_id) // 2초를 기다리지 않고 바로 진행 띠를 띄운다
     } catch (e) {
       if (e instanceof ApiError && e.code === 'SCAN_IN_PROGRESS') {
-        // 이미 돌고 있으면 그 점검을 이어서 지켜본다.
-        const s = await api.domains.summary(domainId)
-        if (s.running_scan_id) await check(s.running_scan_id)
+        // 이미 돌고 있으면 그 점검을 이어서 지켜본다. 이 요청도 실패할 수 있어 따로 감싼다.
+        try {
+          const s = await api.domains.summary(domainId)
+          if (s.running_scan_id) await check(s.running_scan_id)
+        } catch {
+          setError('진행 중인 점검을 찾지 못했습니다. 잠시 뒤 다시 시도해 주세요.')
+        }
         return
       }
       setError(e instanceof ApiError ? e.message : '점검을 시작하지 못했습니다.')
@@ -81,16 +85,22 @@ export function ScanProvider({ domainId, children }: { domainId: string | null; 
     await check(runningScanId)
   }, [runningScanId, check])
 
-  const value: ScanState = {
-    domainId,
-    running,
-    isRunning: runningScanId !== null,
-    lastFinished,
-    finishedVersion,
-    error,
-    start,
-    stop,
-    dismissFinished: () => setLastFinished(null),
-  }
+  // 함수가 렌더마다 새로 만들어지면 ScanBanner의 8초 타이머가 다시 시작되므로 고정한다.
+  const dismissFinished = useCallback(() => setLastFinished(null), [])
+
+  const value = useMemo<ScanState>(
+    () => ({
+      domainId,
+      running,
+      isRunning: runningScanId !== null,
+      lastFinished,
+      finishedVersion,
+      error,
+      start,
+      stop,
+      dismissFinished,
+    }),
+    [domainId, running, runningScanId, lastFinished, finishedVersion, error, start, stop, dismissFinished],
+  )
   return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>
 }
