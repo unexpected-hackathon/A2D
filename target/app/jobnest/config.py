@@ -49,7 +49,7 @@ FAULTS = {
     12: "화면 코드 속 비밀키 (/static/js/app.js)",
     13: "소스맵 공개 (/static/js/app.js.map)",
     14: "클라우드 저장소 공개 (이력서 S3 버킷 목록)",
-    16: "인증 없는 API (api /api/v1/applicants: 지원자 이메일·전화번호)",
+    16: "인증 없는 API (api /api/v1/applicants, 숨은 www /internal/reports/export: 지원자 이메일·전화번호)",
     17: "API 설명서 공개 (api /swagger, /openapi.json)",
     18: "관리자 페이지 노출 (채용 담당자 콘솔: admin 하위 도메인, /admin)",
     19: "개발·테스트 서버 노출 (staging, dev)",

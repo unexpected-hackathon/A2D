@@ -75,6 +75,17 @@ def simple(title: str, text: str) -> str:
     return layout(title, f'<div class="card"><h1>{escape(title)}</h1><p>{escape(text)}</p></div>')
 
 
+def internal_reports() -> str:
+    """#16 숨은 경로의 목록 페이지. robots.txt가 숨긴 /internal/reports/에서 내보내기 주소로 이어진다."""
+    body = """
+<div class="card"><h1>사내 보고서</h1>
+<p>내부용 페이지입니다. 외부에 공유하지 마세요.</p>
+<ul>
+  <li><a href="/internal/reports/export">지원자 내보내기 (JSON, 매일 02:00 갱신)</a></li>
+</ul></div>"""
+    return layout("사내 보고서 - JobNest", body)
+
+
 def login() -> str:
     body = """
 <div class="card"><h1>로그인</h1>
