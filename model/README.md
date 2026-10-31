@@ -269,6 +269,7 @@ tar xzf ~/wheels.tgz -C ~ && python3 -m venv .venv
 | `연결 실패` (내 PC에서) | VPN이 끊겼거나 터널 창이 닫혔다. `./llm.sh tunnel`을 다시 연다 |
 | 터널에서 `bind: Address already in use` | 내 PC에서 8000 포트를 다른 프로그램이 쓴다. `.env`의 `LOCAL_PORT`를 바꾸고 `LLM_BASE_URL`도 맞춘다 |
 | 로그에 `fatal error: Python.h: No such file or directory` (Triton `cuda_utils.c`) | 가상 환경이 헤더 없는 시스템 Python으로 만들어졌다. `git pull` 후 `./llm.sh setup`을 다시 실행하면 uv 관리 Python으로 다시 만든다(내려받은 패키지는 uv 캐시를 쓴다). sudo로 `python3-dev`를 설치하는 방법은 서버 구성 변경이라 쓰지 않는다 |
+| 로그에 `No such file or directory: 'ninja'` | vLLM이 실행 중에 커널을 빌드할 때 `ninja`를 PATH에서 찾는다. `ninja`는 의존성으로 `.venv/bin`에 설치되므로 `llm.sh up`이 `.venv/bin`을 PATH 앞에 둔다. 직접 `vllm serve`를 실행할 때는 `source .venv/bin/activate`를 먼저 한다 |
 | `up`이 `Engine core initialization failed`로 끝남 | 마지막 줄은 결과일 뿐이다. `up`이 함께 보여 주는 '원인으로 보이는 줄'이나 `grep -n -E 'Error|Exception' logs/vllm.log \| head`에서 EngineCore 쪽 첫 오류를 본다 |
 | 첫 `up`이 20분을 넘김 | `./llm.sh logs`에서 멈춘 단계를 본다. 내려받기가 덜 됐으면 `./llm.sh download`를 다시 실행한다 |
 

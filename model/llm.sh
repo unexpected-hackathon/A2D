@@ -81,7 +81,7 @@ cmd_preflight() {
   if command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then echo "$ok docker"; else echo "$warn docker 사용 불가 (괜찮다. venv로 설치한다)"; fi
   if command -v uv >/dev/null 2>&1 || [ -x "$HOME/.local/bin/uv" ]; then echo "$ok uv"; else echo "$warn uv 없음 (setup이 ~/.local/bin에 설치한다)"; fi
   if command -v python3 >/dev/null 2>&1; then echo "$ok $(python3 --version 2>&1)"; else echo "$warn python3 없음 (uv가 Python $PYTHON_VERSION을 받는다)"; fi
-  for t in tmux curl gcc; do
+  for t in tmux curl gcc nvcc; do
     if command -v "$t" >/dev/null 2>&1; then echo "$ok $t"; else echo "$warn $t 없음"; fi
   done
 
@@ -122,8 +122,11 @@ show_failure() {
   echo "----- 원인으로 보이는 줄 (처음 나온 오류부터) -----"
   grep -n -E 'Error|Exception|error:|out of memory|No available memory|Traceback' "$LOG_FILE" \
     | grep -v -E 'Engine core initialization failed|^[0-9]+:\s+File ' | head -n 25 || true
-  echo "----- 로그 마지막 15줄 -----"
-  tail -n 15 "$LOG_FILE"
+  echo "----- 첫 EngineCore 오류가 난 위치 (패키지 파일만) -----"
+  awk '/EngineCore.*Traceback/ {on=1} on && /File "/ {print} on && /EngineCore.*(Error|Exception):/ {exit}' "$LOG_FILE" \
+    | sed -E 's/.*File "([^"]*site-packages\/)?([^"]*)", line ([0-9]+), in (.*)/  \2:\3 \4/' | tail -n 12 || true
+  echo "----- 로그 마지막 10줄 -----"
+  tail -n 10 "$LOG_FILE"
   echo "----- 전체 로그: $PWD/$LOG_FILE -----"
 }
 
@@ -185,6 +188,9 @@ cmd_up() {
   [ -f "$LOG_FILE" ] && mv "$LOG_FILE" "$LOG_FILE.prev"
 
   log "vLLM 시작: $SERVED_MODEL_NAME, 문맥 $MAX_MODEL_LEN, GPU 메모리 $GPU_MEMORY_UTILIZATION, 생각 모드 $thinking"
+  # vLLM은 실행 중에 ninja·gcc 같은 도구를 하위 프로세스로 부른다. 가상 환경을 활성화한 것처럼
+  # .venv/bin을 PATH 앞에 둬야 의존성으로 설치된 ninja를 찾는다.
+  export VIRTUAL_ENV="$PWD/$VENV" PATH="$PWD/$VENV/bin:$PATH"
   # setsid + nohup: SSH 접속을 끊어도 계속 돈다.
   setsid nohup "$VENV/bin/vllm" serve "$MODEL_DIR" \
     --served-model-name "$SERVED_MODEL_NAME" \
