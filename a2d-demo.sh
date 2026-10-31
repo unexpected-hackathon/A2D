@@ -292,7 +292,7 @@ txt_check() {
   fi
   if [ "$want" = trust ]; then
     say "이제 등록 화면에서 \"확인\"만 누르면 소유권이 확인됩니다(verify 단계 생략)."
-    say "TXT 없이 통과하는 것은 .test 같은 예약 도메인뿐입니다. 실제 도메인은 계속 TXT로 확인합니다."
+    say "TXT 없이 통과하는 것은 .test 같은 예약 도메인과 apps/api/.env의 A2D_TRUST_DOMAINS에 적은 도메인뿐입니다. 그 밖의 실제 도메인은 계속 TXT로 확인합니다."
   else
     say "이미 확인된 도메인은 그대로 확인됨입니다. TXT 장면을 다시 찍으려면 ./a2d-demo.sh reset"
   fi
