@@ -81,7 +81,7 @@ cmd_preflight() {
   if command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then echo "$ok docker"; else echo "$warn docker 사용 불가 (괜찮다. venv로 설치한다)"; fi
   if command -v uv >/dev/null 2>&1 || [ -x "$HOME/.local/bin/uv" ]; then echo "$ok uv"; else echo "$warn uv 없음 (setup이 ~/.local/bin에 설치한다)"; fi
   if command -v python3 >/dev/null 2>&1; then echo "$ok $(python3 --version 2>&1)"; else echo "$warn python3 없음 (uv가 Python $PYTHON_VERSION을 받는다)"; fi
-  for t in tmux curl; do
+  for t in tmux curl gcc; do
     if command -v "$t" >/dev/null 2>&1; then echo "$ok $t"; else echo "$warn $t 없음"; fi
   done
 
@@ -127,11 +127,22 @@ show_failure() {
   echo "----- 전체 로그: $PWD/$LOG_FILE -----"
 }
 
+# Triton(torch 컴파일)이 실행 중에 gcc로 C 코드를 빌드하므로 Python 헤더(Python.h)가 있어야 한다.
+venv_has_headers() {
+  "$VENV/bin/python" -I -c 'import os, sys, sysconfig; sys.exit(0 if os.path.exists(os.path.join(sysconfig.get_paths()["include"], "Python.h")) else 1)' 2>/dev/null
+}
+
 cmd_setup() {
   ensure_uv
+  if [ -x "$VENV/bin/python" ] && ! venv_has_headers; then
+    log "가상 환경의 Python에 헤더(Python.h)가 없다. uv가 관리하는 Python으로 다시 만든다"
+    rm -rf "$VENV"
+  fi
   if [ ! -x "$VENV/bin/python" ]; then
-    log "Python $PYTHON_VERSION 가상 환경 만들기 ($VENV)"
-    "$UV" venv --python "$PYTHON_VERSION" "$VENV"
+    # 시스템 Python에는 헤더(python3-dev)가 없을 수 있고, 서버 구성은 바꾸지 않는다.
+    # uv가 관리하는 Python은 헤더를 포함해 사용자 홈(~/.local/share/uv)에 설치된다.
+    log "Python $PYTHON_VERSION 가상 환경 만들기 ($VENV, uv 관리 Python)"
+    "$UV" venv --python "$PYTHON_VERSION" --managed-python "$VENV"
   fi
   log "vLLM $VLLM_VERSION 설치 (torch·CUDA 런타임 포함, 몇 분 걸린다)"
   VIRTUAL_ENV="$PWD/$VENV" "$UV" pip install "vllm==$VLLM_VERSION"
@@ -257,7 +268,8 @@ cmd_check() {
 cmd_deploy() {
   local evidence="$LOG_DIR/evidence"
   log "[1/4] 설치"
-  if [ -x "$VENV/bin/vllm" ] && [ "$("$VENV/bin/python" -c 'import vllm; print(vllm.__version__)' 2>/dev/null)" = "$VLLM_VERSION" ]; then
+  if [ -x "$VENV/bin/vllm" ] && venv_has_headers \
+    && [ "$("$VENV/bin/python" -c 'import vllm; print(vllm.__version__)' 2>/dev/null)" = "$VLLM_VERSION" ]; then
     log "  vLLM $VLLM_VERSION 이미 설치됨. 건너뛴다"
   else
     cmd_setup
