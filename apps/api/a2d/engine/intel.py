@@ -1,8 +1,8 @@
-"""공개 자료 조회: 알려진 약점(#23), 지원 종료(#25), 도메인 등록 정보(#33).
+"""공개 자료 조회: 알려진 취약점(#23), 지원 종료(#25), 도메인 등록 정보(#33).
 
 내장 표 대신 공개 자료를 그때그때 묻는다. 대상이 아니라 아래 공개 서비스에 요청한다.
-- 알려진 약점: NVD CVE API 2.0 (제품·버전을 CPE로 바꿔 묻는다)
-- 실제 악용된 약점: CISA KEV 목록(JSON 한 파일). NVD 응답의 cisaExploitAdd도 함께 본다
+- 알려진 취약점: NVD CVE API 2.0 (제품·버전을 CPE로 바꿔 묻는다)
+- 실제 악용된 취약점: CISA KEV 목록(JSON 한 파일). NVD 응답의 cisaExploitAdd도 함께 본다
 - 지원 종료: endoflife.date API v1
 - 도메인 등록 정보: RDAP. IANA 부트스트랩 파일에서 최상위 도메인의 RDAP 서버를 찾는다
 
@@ -129,12 +129,12 @@ async def _get_json(http, url: str, headers: dict[str, str] | None = None, *,
     return None
 
 
-# ==================================================================== #23 알려진 약점
+# ==================================================================== #23 알려진 취약점
 
 async def cves(http, product: str, version: str) -> list[dict] | None:
-    """서버 제품 버전의 알려진 약점. [{"id", "cvss", "kev"}]를 CVSS 높은 순으로 돌려준다.
+    """서버 제품 버전의 알려진 취약점. [{"id", "cvss", "kev"}]를 CVSS 높은 순으로 돌려준다.
 
-    약점이 없으면 [], 조회하지 못했거나 모르는 제품이면 None이다(모름과 없음을 구분한다).
+    취약점이 없으면 [], 조회하지 못했거나 모르는 제품이면 None이다(모름과 없음을 구분한다).
     """
     try:
         return await _cves(http, product, version)

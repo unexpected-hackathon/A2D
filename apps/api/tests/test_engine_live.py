@@ -366,7 +366,7 @@ def test_evidence_masks_pii():
     _, findings, _, _ = run_engine(set())
     pii = next(f for f in findings if f.check_id == 16)
     assert "example.com" not in pii.evidence and "010-0000" not in pii.evidence
-    assert "가림" in pii.evidence and len(pii.evidence) <= 200
+    assert "마스킹" in pii.evidence and len(pii.evidence) <= 200
 
 
 def test_cve_attached_to_version_finding():
@@ -377,7 +377,7 @@ def test_cve_attached_to_version_finding():
 
 def test_no_double_findings_on_apex_and_www():
     _, findings, _, _ = run_engine(set())
-    # #8은 대표 웹 자산 하나에서만 (꼭짓점·www 중복 없음)
+    # #8은 대표 웹 자산 하나에서만 (루트·www 중복 없음)
     assert sum(1 for f in findings if f.check_id == 8) == 1
     # #18은 admin 하위 도메인에서 한 번만 (www/admin 경로와 중복 안 함)
     assert sum(1 for f in findings if f.check_id == 18) == 1

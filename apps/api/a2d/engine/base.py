@@ -81,7 +81,7 @@ class RawFinding:
     check_id: int
     situation: str  # catalog.SITUATIONS의 키. 예: (16, "pii")
     location: str  # 예: "GET https://api.example.com/v1/members/1024"
-    evidence: str  # 가린 발췌, 200자 이내 (NFR-05)
+    evidence: str  # 마스킹된 발췌, 200자 이내 (NFR-05)
     cves: list[dict] = field(default_factory=list)  # #23만. {"id", "cvss", "kev"}
 
     def validate(self) -> None:
@@ -111,6 +111,6 @@ class Engine:
 
         - 단계가 바뀔 때마다 ctx.set_stage를 부른다.
         - 오래 걸리는 일 사이사이 ctx.budget.check()를 불러 중지 요청을 받는다.
-        - 응답 원문은 넘기지 않는다. 증거는 가린 발췌만 넘긴다.
+        - 응답 원문은 넘기지 않는다. 증거는 마스킹된 발췌만 넘긴다.
         """
         raise NotImplementedError

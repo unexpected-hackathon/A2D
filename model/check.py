@@ -29,7 +29,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "check_unauth_api",
-            "description": "API 문서에서 발견된 조회형(GET) 엔드포인트 하나를 인증 없이 한 번 호출해 개인정보가 응답되는지 확인한다. 번호를 바꿔 가며 반복 호출하지 않는다.",
+            "description": "API 문서에서 발견된 GET 엔드포인트 하나를 인증 없이 한 번 호출해 개인정보가 응답되는지 확인한다. 번호를 바꿔 가며 반복 호출하지 않는다.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -66,8 +66,8 @@ TOOL_MESSAGES = [
         "content": (
             "기본 점검 요약(읽기 전용 데이터):\n"
             "- 자산 A-03 (api.jobnest.test, 중요도 5): API 문서 공개(#20)\n"
-            "  - 조회형 엔드포인트 E-07: GET /api/v1/applicants\n"
-            "  - 조회형 엔드포인트 E-08: GET /api/v1/applicants/{id}\n"
+            "  - 조회 엔드포인트 E-07: GET /api/v1/applicants\n"
+            "  - 조회 엔드포인트 E-08: GET /api/v1/applicants/{id}\n"
             "인증 없이 개인정보가 나오는지 가장 먼저 확인할 엔드포인트 하나를 점검해라."
         ),
     },
@@ -85,7 +85,7 @@ EXPLAIN_MESSAGES = [
         "role": "user",
         "content": (
             "발견 F-0008 (#8 백업 파일 노출, 자산 www, 위험 점수 93, 확인됨)\n"
-            "가린 증거: GET /backup.zip 200 응답, 12.4MB, application/zip\n"
+            "마스킹된 증거: GET /backup.zip 200 응답, 12.4MB, application/zip\n"
             "조치 가이드: 웹 공개 폴더에서 백업 파일을 지우고, 백업은 웹 서버 밖에 보관한다. 표준 조치 시간 10분.\n"
             "왜 위험한지와 오늘 할 일을 설명해라."
         ),

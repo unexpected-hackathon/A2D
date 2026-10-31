@@ -276,14 +276,14 @@ body {
   min-width: 0;
 }
 
-/* ---------- 공통 틀: 머리글 + 겹친 종이 폴더 ---------- */
+/* ---------- 공통 틀: 헤더 + 겹친 종이 폴더 ---------- */
 :root {
   --a2d-paper-orange: #e8590c;
   --a2d-paper-white: #ffffff;
   --a2d-paper-brown: #8b5a3c;
   --a2d-sheet: #fbf8f4; /* 어느 탭에도 맞지 않는 주소일 때의 중립 바탕 */
-  --a2d-header-h: 84px; /* 머리글 높이 */
-  --a2d-tabrow: 56px; /* 파일 색인 탭 줄의 높이. 선택한 탭은 여기서 8px 더 내려와 내용 영역과 이어진다 */
+  --a2d-header-h: 84px; /* 헤더 높이 */
+  --a2d-tabrow: 56px; /* 인덱스 탭 줄의 높이. 선택한 탭은 여기서 8px 더 내려와 내용 영역과 이어진다 */
 }
 
 .a2d-app {
@@ -293,7 +293,7 @@ body {
   padding: 0 24px 24px;
 }
 
-/* 머리글: 위에 고정. 왼쪽 로고·점검 대상, 오른쪽 사용자 */
+/* 헤더: 위에 고정. 왼쪽 로고·점검 대상, 오른쪽 사용자 */
 .a2d-header {
   position: sticky;
   top: 0;
@@ -372,7 +372,7 @@ body {
   container: sheet / inline-size;
   position: relative;
   z-index: 2; /* 탭 띠(3) 아래. 선택한 탭이 이 위로 8px 겹친다 */
-  /* 색을 쓸고 지나가는 덮개가 탭 위로 나가지 않게 여기서 자른다 */
+  /* 색을 쓸고 지나가는 오버레이가 탭 위로 나가지 않게 여기서 자른다 */
   overflow: clip;
   isolation: isolate;
   min-width: 0;
@@ -435,7 +435,7 @@ body {
   opacity: 0.8;
 }
 
-/* 파일 색인 탭: 내용 영역 위쪽 가장자리의 왼쪽. 탭 폭은 글자 길이대로, 탭끼리 10px 겹친다 */
+/* 인덱스 탭: 내용 영역 위쪽 가장자리의 왼쪽. 탭 폭은 글자 길이대로, 탭끼리 10px 겹친다 */
 .a2d-tabs {
   position: relative;
   /* 내용 영역(2)보다 위. 선택한 탭만 내용 영역 위로 8px 겹치고, 나머지 탭은 가장자리까지만 온다 */
@@ -462,7 +462,7 @@ body {
   padding: 0 24px 0 18px;
   border-radius: 18px 18px 0 0;
   background: var(--tab-fill);
-  /* 앞 탭이 뒤 탭 위에 놓인다(색인 모양). 선택한 탭은 맨 앞 */
+  /* 앞 탭이 뒤 탭 위에 놓인다(인덱스 탭 모양). 선택한 탭은 맨 앞 */
   z-index: calc(10 - var(--i, 0));
   opacity: 0.94;
   box-shadow: 0 -3px 10px rgb(16 32 47 / 0.08);

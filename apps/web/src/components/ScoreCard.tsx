@@ -98,7 +98,7 @@ export function ScoreCard({ summary, onRescan, scanning }: ScoreCardProps) {
             </Text>
             {summary.score_formula && (
               <ActionButton variant="ghost" size="xsmall" onClick={() => setShowFormula((v) => !v)}>
-                {showFormula ? '산식 접기' : '산식 보기'}
+                {showFormula ? '계산식 접기' : '계산식 보기'}
               </ActionButton>
             )}
           </HStack>

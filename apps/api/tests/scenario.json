@@ -1,5 +1,5 @@
 {
-  "_comment": "테스트용 가짜 엔진(tests/fakes.py ScenarioEngine)의 시나리오. {domain}은 등록한 도메인으로 바뀐다. 증거는 이미 가린 발췌다.",
+  "_comment": "테스트용 가짜 엔진(tests/fakes.py ScenarioEngine)의 시나리오. {domain}은 등록한 도메인으로 바뀐다. 증거는 이미 마스킹된 발췌다.",
   "rounds": [
     {
       "assets": [

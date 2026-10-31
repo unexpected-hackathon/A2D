@@ -17,7 +17,7 @@ Oct 31, 2026 · 정인호
 | 필드 이름 | `snake_case` |
 | 점수 | 정수. 점검·점수 설계 2.1의 반올림 규칙을 적용한 값 |
 | 진행 상태 | 점검 진행은 2초 간격 폴링으로 받는다. 실시간 푸시는 쓰지 않는다 |
-| 증거 | 응답 원문은 내려주지 않는다. 가린 발췌(200자 이내)만 내려준다 (NFR-05) |
+| 증거 | 응답 원문은 내려주지 않는다. 마스킹된 발췌(200자 이내)만 내려준다 (NFR-05) |
 
 ### ID 형식
 
@@ -92,7 +92,7 @@ API는 영문 코드를 쓰고, 화면은 오른쪽 한국어 표기를 쓴다.
 | GET | `/scans/{scan_id}/assets` | 자산 목록 | 2 대시보드 | FR-02, 14 | P0 |
 | PATCH | `/domains/{domain_id}/assets/{asset_id}` | 자산 중요도 수정 | 2 대시보드 | FR-05 | P0 |
 | GET | `/scans/{scan_id}/findings` | 발견 목록 | 2, 3 | FR-03, 05 | P0 |
-| GET | `/findings/{finding_id}` | 발견 상세 (점수 요소, 가린 증거) | 3 조치 가이드 | FR-05 | P0 |
+| GET | `/findings/{finding_id}` | 발견 상세 (점수 요소, 마스킹된 증거) | 3 조치 가이드 | FR-05 | P0 |
 | GET | `/scans/{scan_id}/report` | 조치 가이드 | 3 조치 가이드 | FR-07, 08, 11 | P0 |
 | POST | `/scans/{scan_id}/questions` | 담당자 질문 | 3 조치 가이드 | FR-12 | P1 |
 | GET | `/domains/{domain_id}/history` | 점검별 점수 추이 | 4 기록 | FR-10 | P0 |
@@ -182,7 +182,7 @@ API는 영문 코드를 쓰고, 화면은 오른쪽 한국어 표기를 쓴다.
 {
   "items": [
     { "check_id": 16, "name": "인증 없는 API", "category": "C", "category_name": "접근 통제", "phase": "1차", "scored": true },
-    { "check_id": 24, "name": "홈페이지 부품 버전", "category": "D", "category_name": "소프트웨어 버전", "phase": "1차·식별", "scored": false },
+    { "check_id": 24, "name": "홈페이지 컴포넌트 버전", "category": "D", "category_name": "소프트웨어 버전", "phase": "1차·식별", "scored": false },
     { "check_id": 29, "name": "오래된 암호화 방식", "category": "E", "category_name": "전송·브라우저 설정", "phase": "2차", "scored": false }
   ]
 }
@@ -417,7 +417,7 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 
 - `found_by`는 이 자산을 찾은 자산 찾기 항목 번호(#1~#5)다.
 - `importance.source`는 `auto`(자동 추정) 또는 `manual`(담당자 수정)이다. `rule`은 자동 추정 근거로, 점검·점수 설계 2.2의 규칙 이름이다.
-- `components`는 #24 부품 식별 결과다. 점수에는 들어가지 않는다.
+- `components`는 #24 컴포넌트 식별 결과다. 점수에는 들어가지 않는다.
 - `importance` 고정 항목(#6, #12, #14, #32, #33, #34)은 자산 중요도와 무관하게 고정값으로 계산한다.
 
 ### PATCH `/domains/{domain_id}/assets/{asset_id}`
@@ -505,7 +505,7 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 ```
 
 - `score`의 네 요소는 점검·점수 설계 2.2의 E·X·D·C다.
-- `evidence`는 가린 발췌로 200자 이내다. 원문은 어떤 API로도 내려주지 않는다.
+- `evidence`는 마스킹된 발췌로 200자 이내다. 원문은 어떤 API로도 내려주지 않는다.
 - `cves`는 #23에서만 채운다. 예: `[{ "id": "CVE-2021-41773", "cvss": 7.5, "kev": true }]`.
 
 ## 8. 조치 가이드
@@ -647,7 +647,7 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 1. 화면이 처음 열리면 `GET /auth/me`. `401`이면 로그인 화면으로 간다.
 2. 이메일·비밀번호를 받아 `POST /auth/login`. 성공하면 `GET /domains`로 도메인이 없을 때 등록, 있을 때 대시보드로 간다.
 3. 어느 API든 `401 UNAUTHENTICATED`가 오면 로그인 화면으로 보내고 "다시 로그인해 주세요"를 보여 준다.
-4. 머리글의 "로그아웃"은 `POST /auth/logout` 뒤 로그인 화면으로 간다.
+4. 헤더의 "로그아웃"은 `POST /auth/logout` 뒤 로그인 화면으로 간다.
 
 ### 1. 등록
 

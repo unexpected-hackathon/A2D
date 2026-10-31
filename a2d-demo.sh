@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # A2D 시연 환경을 한 번에 띄우고 내리는 스크립트. 저장소 루트에서 실행한다.
 #
-#   ./a2d-demo.sh up              피공격 서버(target) → 백엔드(apps/api, Docker) → 화면(apps/web) 순서로 띄우기
-#   ./a2d-demo.sh down            화면·백엔드·피공격 서버 내리기 (점검 기록은 남김)
+#   ./a2d-demo.sh up              타깃 서버(target) → 백엔드(apps/api, Docker) → 화면(apps/web) 순서로 띄우기
+#   ./a2d-demo.sh down            화면·백엔드·타깃 서버 내리기 (점검 기록은 남김)
 #   ./a2d-demo.sh status          세 부분의 상태, 점검 엔진, LLM 연결, 다음 점검에서 나올 결과
 #   ./a2d-demo.sh reset           새 테이크 준비: 결함을 시연 프로필로 되돌리고 점검 기록을 지운다
 #   ./a2d-demo.sh verify [값]     등록 화면의 TXT 값을 시연 DNS에 넣기 (값을 비우면 백엔드에서 읽어 온다)
 #   ./a2d-demo.sh restart-api     apps/api/.env나 백엔드 코드를 고친 뒤 백엔드만 다시 빌드해 띄우기 (점검 기록·결함 상태는 그대로)
 #   ./a2d-demo.sh logs api|web|target
 #
-#   피공격 서버 조작은 target/demo.sh로 그대로 넘긴다:
+#   타깃 서버 조작은 target/demo.sh로 그대로 넘긴다:
 #   ./a2d-demo.sh fix 16 8 18 | break 16 | preset demo | test-server on | check | dns-on | dns-off
 #
 # 환경 변수: A2D_WEB_PORT (화면 포트, 기본 4173)
@@ -209,7 +209,7 @@ else:
 PY
 }
 
-# 점검 결과는 피공격 서버의 결함 상태대로 나온다. 등록·소유권 확인이 어디까지 왔는지와 끝난 점검 수를 알려 준다.
+# 점검 결과는 타깃 서버의 결함 상태대로 나온다. 등록·소유권 확인이 어디까지 왔는지와 끝난 점검 수를 알려 준다.
 scenario_report() {
   local state verify finished
   SCENARIO_FINISHED=0
@@ -219,7 +219,7 @@ scenario_report() {
     none)     say "시연 진행: 도메인 등록 전 (등록 → ./a2d-demo.sh verify → 확인 → 점검)"; return 0 ;;
     pending|failed) say "시연 진행: 소유권 확인 전 (./a2d-demo.sh verify → 화면에서 확인)"; return 0 ;;
   esac
-  say "시연 진행: 끝난 점검 ${finished}회. 결과는 피공격 서버의 결함 상태대로 나옵니다"
+  say "시연 진행: 끝난 점검 ${finished}회. 결과는 타깃 서버의 결함 상태대로 나옵니다"
   say "  preset demo → 14점 F(#16 api·www, #8, #18) · fix 16 8 18 → 100점 A · 이어서 test-server on → 53점 D(#19)"
 }
 
@@ -239,7 +239,7 @@ verify() {
 
 up() {
   preflight
-  say "피공격 서버 띄우기 (target, 시연 프로필 #16 #8 #18)"
+  say "타깃 서버 띄우기 (target, 시연 프로필 #16 #8 #18)"
   target up
   target preset demo
   api_up
@@ -276,7 +276,7 @@ status_line() {
   engine="$(api_get A2D_ENGINE)"
   engine="${engine:-a2d.engine.live:LiveEngine}"
   if [ "$engine" = a2d.engine.live:LiveEngine ]; then
-    say "점검 엔진: 실제 점검(LiveEngine). 피공격 서버에 읽기 요청만 보낸다"
+    say "점검 엔진: 실제 점검(LiveEngine). 타깃 서버에 읽기 요청만 보낸다"
   else
     say "점검 엔진: $engine"
   fi
@@ -284,7 +284,7 @@ status_line() {
 }
 
 status() {
-  say "피공격 서버:"
+  say "타깃 서버:"
   # docker compose가 형식 앞의 공백을 지우므로 들여쓰기는 sed로 붙인다
   (cd "$ROOT/target" && docker compose ps --format '{{.Service}}  {{.State}}') | sed 's/^/  /' || true
   if curl -s -o /dev/null --max-time 2 "$(api_url)/health"; then

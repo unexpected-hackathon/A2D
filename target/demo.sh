@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 피공격 서버 조작 스크립트. target/ 안에서 실행한다.
+# 타깃 서버 조작 스크립트. target/ 안에서 실행한다.
 #
 #   ./demo.sh up                 띄우기 (.env가 없으면 .env.example을 복사)
 #   ./demo.sh down               내리기 (상태 볼륨은 남김. 지우려면 down -v)

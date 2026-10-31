@@ -2,11 +2,11 @@
 
 가드 층(`tools.Guard`)이 허용·범위·예산을 거른 뒤, 통과한 호출만 이 핸들러에 넘긴다.
 핸들러는 점검 대상에 '읽기(GET) 요청만' 보내고, 발견은 `ctx.add_finding`으로 저장소에 기록하며,
-LLM에는 발견 ID·상태·가린 증거만 돌려준다(응답 원문·위치·host 금지).
+LLM에는 발견 ID·상태·마스킹된 증거만 돌려준다(응답 원문·위치·host 금지).
 
-- probe_http: 자산 하나의 웹 응답을 다시 확인하고, 화면 코드·OpenAPI에서 조회형 API 엔드포인트를
-  찾아 Scope에 등록한다. 발견은 기록하지 않는다(버전·부품 식별과 점수는 기본 점검/점수 코드가 맡는다).
-- check_unauth_api(#16): 찾은 조회형 엔드포인트 하나를 인증 없이 한 번 호출해 개인정보 형태의 데이터가
+- probe_http: 자산 하나의 웹 응답을 다시 확인하고, 화면 코드·OpenAPI에서 조회 API 엔드포인트를
+  찾아 Scope에 등록한다. 발견은 기록하지 않는다(버전·컴포넌트 식별과 점수는 기본 점검/점수 코드가 맡는다).
+- check_unauth_api(#16): 찾은 조회 엔드포인트 하나를 인증 없이 한 번 호출해 개인정보 형태의 데이터가
   돌아오는지 본다. 돌아오면 발견을 기록하고, 아니면 "이상 없음"을 돌려준다.
 
 안전 규칙(상세설계 4절·2.4, PRD NFR-04):
@@ -14,7 +14,7 @@ LLM에는 발견 ID·상태·가린 증거만 돌려준다(응답 원문·위치
 - GET만 보낸다(쓰기·변경 금지). 요청마다 10초 제한, 대상 호스트당 초당 2건으로 속도를 제한한다.
 - 요청을 보낼 때마다 ctx.budget.requests_used를 올리고, 상한(0이면 없음)을 넘으면 더 보내지 않는다.
 - 요청 사이사이 ctx.budget.check()로 중지 요청·제한 시간을 확인한다(ScanStopped는 그대로 올려 보낸다).
-- 개인정보·비밀값은 가린 발췌(200자 이내)만 근거로 저장하고, LLM에는 원문을 넘기지 않는다.
+- 개인정보·비밀값은 마스킹된 발췌(200자 이내)만 근거로 저장하고, LLM에는 원문을 넘기지 않는다.
 
 실제 연결 설정(TLS 검증·시연 CA·DNS)은 호출하는 쪽이 만든 httpx.AsyncClient에 담아 넘긴다.
 이 모듈은 넘겨받은 클라이언트로 요청만 보낸다(테스트는 httpx.MockTransport를 끼운다).
@@ -42,7 +42,7 @@ USER_AGENT = "A2D-Scanner/1.0 (+external-exposure check; read-only; https://gith
 REQUEST_TIMEOUT = 10.0  # 요청마다 10초 제한(상세설계 4절)
 HOST_MIN_INTERVAL = 0.5  # 대상 호스트당 초당 2건
 MAX_BODY_READ = 65536  # 응답을 받은 뒤 앞부분만 본다(개인정보 대량 적재 방지)
-EVIDENCE_LIMIT = 200  # 가린 증거 길이 상한(NFR-05)
+EVIDENCE_LIMIT = 200  # 마스킹된 증거 길이 상한(NFR-05)
 
 # 개인정보 형태 판별(값은 저장하지 않고 '있다'만 센다)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
@@ -108,7 +108,7 @@ class AttackProbe:
     # ---------------------------------------------------------------- probe_http
 
     async def _probe_http(self, args: AssetArgs, scope: Scope) -> ToolResult:
-        """자산 하나의 웹 응답을 다시 확인하고 조회형 API 엔드포인트를 찾아 Scope에 등록한다."""
+        """자산 하나의 웹 응답을 다시 확인하고 조회 API 엔드포인트를 찾아 Scope에 등록한다."""
         asset = scope.assets[args.asset_id]  # Guard가 범위를 이미 확인했다
         host = asset.host
         root = await self._get(host, "/")
@@ -118,7 +118,7 @@ class AttackProbe:
         headers = self._safe_headers(root)
         product = self._guess_product(root, headers)
 
-        # 화면 코드(JS 포함 HTML)와 OpenAPI 문서에서 조회형 경로 후보를 모은다.
+        # 화면 코드(JS 포함 HTML)와 OpenAPI 문서에서 조회 경로 후보를 모은다.
         paths = self._paths_from_body(root)
         openapi = await self._get(host, "/openapi.json")
         if openapi is not None and openapi.status_code == 200:
@@ -136,7 +136,7 @@ class AttackProbe:
             "http_status": root.status_code,
             "headers": headers,          # server·x-powered-by 등 안전한 헤더만
             "product_guess": product,    # #24 식별 힌트(점수에는 반영하지 않음)
-            "endpoints": found,          # 조회형 엔드포인트 ID(경로는 Scope가 정제한 값)
+            "endpoints": found,          # 조회 엔드포인트 ID(경로는 Scope가 정제한 값)
         }
         callable_n = sum(1 for e in found if e["callable"])
         return ToolResult(data, f"HTTP {root.status_code}, 엔드포인트 {len(found)}개(호출 가능 {callable_n})")
@@ -187,7 +187,7 @@ class AttackProbe:
     # ---------------------------------------------------------------- check_unauth_api (#16)
 
     async def _check_unauth_api(self, args: EndpointArgs, scope: Scope) -> ToolResult:
-        """조회형 엔드포인트 하나를 인증 없이 호출해 개인정보 형태 데이터가 오는지 본다(#16)."""
+        """조회 엔드포인트 하나를 인증 없이 호출해 개인정보 형태 데이터가 오는지 본다(#16)."""
         asset = scope.assets[args.asset_id]
         endpoint: Endpoint = scope.endpoints[args.endpoint_id]  # Guard가 호출 가능 여부를 확인했다
         r = await self._get(asset.host, endpoint.path)
@@ -264,7 +264,7 @@ class AttackProbe:
     @staticmethod
     def _mask_evidence(status: int, kinds: list[str], count: int | None) -> str:
         where = f"{count}건" if count is not None else "데이터"
-        text = f"{status} 응답, {where}에 {'·'.join(kinds)} 형식 포함(가림)"
+        text = f"{status} 응답, {where}에 {'·'.join(kinds)} 형식 포함(마스킹)"
         return text[:EVIDENCE_LIMIT]
 
 
