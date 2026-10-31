@@ -43,11 +43,9 @@ FINISHED = ("done", "stopped")
 TERMINAL = ("done", "stopped", "failed")
 
 # 추가 점검(Attack 에이전트)을 건너뛰거나 일부만 했을 때 화면에 보이는 문장. 원인은 attack.reason에 남는다.
-# 가짜 엔진(fixture)은 시연 화면에 그대로 나오므로 원인을 문장에 쓰지 않는다.
 ATTACK_MESSAGES = {
     "llm_not_configured": "AI 서버가 연결되지 않아 추가 점검을 건너뛰었습니다. 기본 점검 결과로 점수를 냈습니다.",
     "llm_unavailable": "AI 서버가 응답하지 않아 추가 점검을 건너뛰었습니다. 기본 점검 결과로 점수를 냈습니다.",
-    "fixture_engine": "추가 점검을 건너뛰고 기본 점검 결과로 점수를 냈습니다.",
     "no_handlers": "추가 점검을 건너뛰고 기본 점검 결과로 점수를 냈습니다.",
     "llm_interrupted": "추가 점검 중 AI 서버 응답이 끊겨 일부만 확인했습니다.",
     "error": "추가 점검 중 오류가 나 기본 점검 결과로 점수를 냈습니다.",
@@ -191,17 +189,14 @@ class Service:
         d = self._domain_or_404(domain_id)
         reason = None
         if d["verify_status"] != "verified":
-            if self.s.verify_mode == "trust":  # TXT 확인을 끈 상태: 조회 없이 통과
-                ok = True
-            else:
-                values = await self._lookup_txt(f"{VERIFY_LABEL}.{d['domain']}")
-                ok = bool(values) and d["txt_value"] in values
-                if values is None:
-                    reason = "DNS 조회에 실패했습니다. 잠시 뒤 다시 시도해 주세요."
-                elif not values:
-                    reason = "TXT 레코드를 찾지 못했습니다. DNS 반영에 몇 분이 걸릴 수 있습니다."
-                elif not ok:
-                    reason = "TXT 레코드 값이 발급한 값과 다릅니다. 값을 그대로 복사해 넣어 주세요."
+            values = await self._lookup_txt(f"{VERIFY_LABEL}.{d['domain']}")
+            ok = bool(values) and d["txt_value"] in values
+            if values is None:
+                reason = "DNS 조회에 실패했습니다. 잠시 뒤 다시 시도해 주세요."
+            elif not values:
+                reason = "TXT 레코드를 찾지 못했습니다. DNS 반영에 몇 분이 걸릴 수 있습니다."
+            elif not ok:
+                reason = "TXT 레코드 값이 발급한 값과 다릅니다. 값을 그대로 복사해 넣어 주세요."
             if ok:
                 d.update(verify_status="verified", verified_at=now_iso())
             else:
@@ -247,7 +242,7 @@ class Service:
             "status": "queued",
             "stage": {"name": STAGE_NAMES["queued"], "done": 0, "total": 0},
             "budget": budget.to_api(),
-            # 가짜 엔진의 시나리오 회차. 끝까지 돈 점검만 센다
+            # 이 도메인의 몇 번째 점검인지(EngineContext.round). 끝까지 돈 점검만 센다
             "round": len(self.store.scans_for(domain_id, ("done",))) + 1,
             "previous_scan_id": prev["scan_id"] if prev else None,
             "started_at": now_iso(),
@@ -325,7 +320,7 @@ class Service:
                     }
                     scan["attack"] = attack_state("running")
                     reason = await self._run_attack(ctx, summary)
-                    skipped = reason in ("llm_not_configured", "fixture_engine", "no_handlers", "llm_unavailable")
+                    skipped = reason in ("llm_not_configured", "no_handlers", "llm_unavailable")
                     scan["attack"] = attack_state("skipped" if skipped else "done",
                                                   None if reason == agents.ATTACK_DONE else reason)
                 except ScanStopped:
@@ -377,17 +372,12 @@ class Service:
             self._tasks.pop(scan_id, None)
 
     async def _run_attack(self, ctx: EngineContext, summary: dict) -> str:
-        """추가 점검(Attack 에이전트)을 돌린다. 실제 대상에 요청하는 핸들러는 진짜 엔진일 때만 붙인다.
+        """추가 점검(Attack 에이전트)을 돌린다. 점검용 httpx 클라이언트를 열어 대상에 요청하는 핸들러를 끼운다.
 
-        fixture 엔진은 시연용 가짜 결과라 대상에 요청을 보내지 않는다. 그래서 핸들러를 붙이지 않고,
-        run_attack은 핸들러가 없으면 추가 점검을 건너뛴다(도구 호출·LLM 요청도 하지 않는다).
-        진짜 엔진(A2D_ENGINE=패키지.모듈:클래스)일 때만 점검용 httpx 클라이언트를 열어 핸들러를 끼운다.
-        돌려주는 값은 끝난 이유다(agents.ATTACK_* 또는 "fixture_engine").
+        돌려주는 값은 끝난 이유다(agents.ATTACK_*).
         """
         if not self.llm.configured:
             return agents.ATTACK_NOT_CONFIGURED
-        if self.s.engine == "fixture":
-            return "fixture_engine"
         resolve = DnsResolver(self.s.dns_servers).a if self.s.dns_servers else None  # 엔진과 같은 점검 DNS
         async with attack_handlers.open_client(resolve=resolve) as client:
             handlers = attack_handlers.build_attack_handlers(ctx, client)

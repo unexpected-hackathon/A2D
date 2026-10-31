@@ -144,7 +144,7 @@ def test_failed_scan_shows_reason_through_service(tmp_path):
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(refuse))
     s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "a2d.sqlite3"),
-                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0)
+                 web_origins=[ORIGIN])
     engine = LiveEngine(s, dns=FakeDns(set()), tls=FakeTls(set()), client=client, host_min_interval=0)
 
     with TestClient(create_app(s, engine=engine), base_url="http://testserver",

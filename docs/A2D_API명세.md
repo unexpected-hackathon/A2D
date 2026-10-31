@@ -243,8 +243,6 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 }
 ```
 
-개발·시연 설정(`A2D_VERIFY_MODE=trust`)에서는 TXT를 조회하지 않고 모든 도메인이 바로 `verified`가 된다. 소유권을 확인하지 않으므로 운영자가 직접 관리하는 도메인만 등록해 점검한다.
-
 실패하면 `verify_status`가 `failed`이고 `reason`에 이유가 온다. 예: `"TXT 레코드를 찾지 못했습니다. DNS 반영에 몇 분이 걸릴 수 있습니다."` 실패해도 HTTP 상태는 200이다.
 
 ### DELETE `/domains/{domain_id}`
@@ -283,9 +281,9 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
   "status": "checking",
   "stage": { "name": "기본 점검", "done": 14, "total": 24 },
   "budget": {
-    "requests_used": 132, "requests_limit": 300,
+    "requests_used": 132, "requests_limit": 0,
     "tool_calls_used": 0, "tool_calls_limit": 20,
-    "elapsed_sec": 71, "time_limit_sec": 300
+    "elapsed_sec": 71, "time_limit_sec": 1800
   },
   "started_at": "2026-10-31T14:03:00+09:00",
   "finished_at": null,
@@ -299,10 +297,11 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 - `stage.name`은 화면에 그대로 보여 줄 한국어다.
 - `safety_score`와 `grade`는 `scoring` 단계가 끝나면 채워진다.
 - `failed`이면 `error_message`에 이유가 온다.
+- `budget.requests_limit`이 `0`이면 요청 수 상한이 없다(기본). `time_limit_sec`는 점검 1회 제한 시간이다(기본 1800초).
 - `attack`은 추가 점검(Attack 에이전트, FR-04)의 상태다. 이 필드가 생기기 전의 점검은 `null`이다.
   - `status`: `pending`(기본 점검 중) · `running` · `done` · `skipped`(건너뜀) · `failed` · `stopped`
-  - `reason`: 건너뛰었거나 일부만 했을 때의 원인. `llm_not_configured`(LLM 주소 없음) · `llm_unavailable`(첫 LLM 요청부터 실패) · `fixture_engine`(시연용 가짜 엔진) · `no_handlers` · `llm_interrupted`(도구를 부르다 LLM이 끊김, `status`는 `done`) · `error`(`status`는 `failed`). 기본 점검을 끝내지 못해 추가 점검까지 가지 못했으면 `skipped`이고 `reason`은 `null`이다.
-  - `message`: 화면에 그대로 보여 줄 한국어. `reason`이 없으면 `null`. 시연 화면에 나가므로 `fixture_engine`이어도 원인을 쓰지 않는다.
+  - `reason`: 건너뛰었거나 일부만 했을 때의 원인. `llm_not_configured`(LLM 주소 없음) · `llm_unavailable`(첫 LLM 요청부터 실패) · `no_handlers` · `llm_interrupted`(도구를 부르다 LLM이 끊김, `status`는 `done`) · `error`(`status`는 `failed`). 기본 점검을 끝내지 못해 추가 점검까지 가지 못했으면 `skipped`이고 `reason`은 `null`이다.
+  - `message`: 화면에 그대로 보여 줄 한국어. `reason`이 없으면 `null`.
 
 ```json
 { "status": "skipped", "reason": "llm_not_configured",

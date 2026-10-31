@@ -6,8 +6,7 @@
 #   ./a2d-demo.sh status          세 부분의 상태, 점검 엔진, LLM 연결, 다음 점검에서 나올 결과
 #   ./a2d-demo.sh reset           새 테이크 준비: 결함을 시연 프로필로 되돌리고 점검 기록을 지운다
 #   ./a2d-demo.sh verify [값]     등록 화면의 TXT 값을 시연 DNS에 넣기 (값을 비우면 백엔드에서 읽어 온다)
-#   ./a2d-demo.sh txt-check on|off  소유권 TXT 확인 켜기(dns)·끄기(trust, "확인"만 누르면 통과). 값 없이 쓰면 지금 상태
-#   ./a2d-demo.sh restart-api     apps/api/.env를 고친 뒤 백엔드만 다시 띄우기 (점검 기록·결함 상태는 그대로)
+#   ./a2d-demo.sh restart-api     apps/api/.env나 백엔드 코드를 고친 뒤 백엔드만 다시 빌드해 띄우기 (점검 기록·결함 상태는 그대로)
 #   ./a2d-demo.sh logs api|web|target
 #
 #   피공격 서버 조작은 target/demo.sh로 그대로 넘긴다:
@@ -210,34 +209,18 @@ else:
 PY
 }
 
-# 실제 엔진(LiveEngine)은 피공격 서버의 결함 상태대로 결과가 나온다. 지금 상태로 점검하면 무엇이 나올지 알려 준다.
-# 가짜 엔진(fixture)은 끝까지 돈 점검 수로 시나리오 회차를 정한다(apps/api/a2d/engine/fixture.py).
-# 피공격 서버를 고쳤는지는 보지 않으므로, 다음 점검이 몇 회차인지 보여 줘 순서가 어긋나지 않게 한다.
+# 점검 결과는 피공격 서버의 결함 상태대로 나온다. 등록·소유권 확인이 어디까지 왔는지와 끝난 점검 수를 알려 준다.
 scenario_report() {
-  local engine state verify finished next
+  local state verify finished
   SCENARIO_FINISHED=0
-  engine="$(api_get A2D_ENGINE)"
-  engine="${engine:-fixture}"
   state="$(demo_api state 2>/dev/null)" || { say "시연 진행: 백엔드에서 읽지 못함"; return 0; }
-  verify="${state% *}"; finished="${state#* }"; next=$((finished + 1)); SCENARIO_FINISHED=$finished
+  verify="${state% *}"; finished="${state#* }"; SCENARIO_FINISHED=$finished
   case "$verify" in
     none)     say "시연 진행: 도메인 등록 전 (등록 → ./a2d-demo.sh verify → 확인 → 점검)"; return 0 ;;
-    pending|failed)
-      if [ "$(verify_mode)" = trust ]; then say "시연 진행: 소유권 확인 전 (화면에서 확인. TXT 확인은 꺼져 있음)"
-      else say "시연 진행: 소유권 확인 전 (./a2d-demo.sh verify → 화면에서 확인)"; fi
-      return 0 ;;
+    pending|failed) say "시연 진행: 소유권 확인 전 (./a2d-demo.sh verify → 화면에서 확인)"; return 0 ;;
   esac
-  if [ "$engine" != fixture ]; then
-    say "시연 진행: 끝난 점검 ${finished}회. 실제 점검이라 결과는 피공격 서버의 결함 상태대로 나옵니다"
-    say "  preset demo → 20점 F(#16 #8 #18) · fix 16 8 18 → 100점 A · 이어서 test-server on → 53점 D(#19)"
-    return 0
-  fi
-  case "$next" in
-    1) say "시연 진행: 다음 점검은 1회차 → #16 #8 #18, 20점 F" ;;
-    2) say "시연 진행: 끝난 점검 1회. 다음 점검은 2회차 → 세 가지 해결, 100점 A (그 전에 ./a2d-demo.sh fix 16 8 18)" ;;
-    3) say "시연 진행: 끝난 점검 2회. 다음 점검은 3회차 → 새 테스트 서버 알림 (그 전에 ./a2d-demo.sh test-server on)" ;;
-    *) say "시연 진행: 끝난 점검 ${finished}회. 시나리오가 끝났습니다. 다시 하려면 ./a2d-demo.sh reset" ;;
-  esac
+  say "시연 진행: 끝난 점검 ${finished}회. 결과는 피공격 서버의 결함 상태대로 나옵니다"
+  say "  preset demo → 14점 F(#16 api·www, #8, #18) · fix 16 8 18 → 100점 A · 이어서 test-server on → 53점 D(#19)"
 }
 
 # ------------------------------------------------------------------ 소유권 TXT
@@ -250,52 +233,6 @@ verify() {
   fi
   target verify "$value"
   say "화면에서 \"확인\"을 누르세요."
-}
-
-# A2D_VERIFY_MODE를 바꾸고, 백엔드가 떠 있으면 그 컨테이너만 다시 띄운다(점검 기록은 남는다).
-# on = dns(TXT 조회), off = trust(조회 없이 통과)
-verify_mode() { local m; m="$(api_get A2D_VERIFY_MODE | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"; echo "${m:-dns}"; }
-
-txt_check() {
-  local want cur
-  case "${1:-}" in
-    on)  want=dns ;;
-    off) want=trust ;;
-    "")
-      if [ "$(verify_mode)" = trust ]; then say "소유권 TXT 확인: 꺼짐 (A2D_VERIFY_MODE=trust)"
-      else say "소유권 TXT 확인: 켜짐 (A2D_VERIFY_MODE=$(verify_mode))"; fi
-      return ;;
-    *)   die "txt-check on | off" ;;
-  esac
-  [ -f "$API_ENV" ] || die "apps/api/.env가 없습니다. ./a2d-demo.sh up을 먼저 하세요."
-  cur="$(verify_mode)"
-  if [ "$cur" = "$want" ]; then
-    say "이미 A2D_VERIFY_MODE=$want 입니다."
-    return
-  fi
-  # sed -i는 GNU와 macOS가 달라 임시 파일로 바꿔 쓴다
-  local tmp="$API_ENV.tmp"
-  if grep -qE '^A2D_VERIFY_MODE=' "$API_ENV"; then
-    sed -E "s/^A2D_VERIFY_MODE=.*/A2D_VERIFY_MODE=$want/" "$API_ENV" >"$tmp"
-  else
-    { cat "$API_ENV"; [ -z "$(tail -c1 "$API_ENV")" ] || echo; echo "A2D_VERIFY_MODE=$want"; } >"$tmp"
-  fi
-  cat "$tmp" >"$API_ENV" && rm -f "$tmp"   # cat으로 덮어 파일 권한을 그대로 둔다
-  say "A2D_VERIFY_MODE: $cur → $want"
-  if curl -s -o /dev/null --max-time 2 "$(api_url)/health"; then
-    say "백엔드만 다시 띄웁니다 (진행 중인 점검이 있으면 끊깁니다)"
-    api_compose up -d --force-recreate api
-    wait_api
-    say "로그인이 풀렸습니다. 브라우저에서 다시 로그인하세요."
-  else
-    say "백엔드가 꺼져 있어 다음 up부터 적용됩니다."
-  fi
-  if [ "$want" = trust ]; then
-    say "이제 등록 화면에서 \"확인\"만 누르면 소유권이 확인됩니다(verify 단계 생략)."
-    say "주의: TXT 확인이 꺼져 있으면 모든 도메인이 소유권 확인 없이 통과합니다. 직접 관리하는 도메인만 등록해 점검하세요."
-  else
-    say "이미 확인된 도메인은 그대로 확인됨입니다. TXT 장면을 다시 찍으려면 ./a2d-demo.sh reset"
-  fi
 }
 
 # ------------------------------------------------------------------ 명령
@@ -331,26 +268,18 @@ reset() {
   wait_api
   web_up
   say "준비됐습니다. 브라우저는 새로 고침하거나 $WEB_URL/login 을 새로 여세요(이전 세션은 끊겼습니다)."
-  if [ "$(verify_mode)" = trust ]; then
-    say "소유권 TXT 확인이 꺼져 있습니다. 도메인을 다시 등록하고 \"확인\"만 누르세요."
-  else
-    say "도메인을 다시 등록하면 TXT 값이 새로 나옵니다. 등록 뒤 ./a2d-demo.sh verify"
-  fi
+  say "도메인을 다시 등록하면 TXT 값이 새로 나옵니다. 등록 뒤 ./a2d-demo.sh verify"
 }
 
 status_line() {
   local engine
   engine="$(api_get A2D_ENGINE)"
-  engine="${engine:-fixture}"
-  if [ "$engine" = fixture ]; then
-    say "점검 엔진: fixture (시연 시나리오를 돌려주는 가짜 엔진. 피공격 서버에 점검 요청을 보내지 않음)"
-    say "  실제로 점검하려면 apps/api/.env에 A2D_ENGINE=a2d.engine.live:LiveEngine 을 넣고 ./a2d-demo.sh restart-api"
-  elif [ "$engine" = a2d.engine.live:LiveEngine ]; then
+  engine="${engine:-a2d.engine.live:LiveEngine}"
+  if [ "$engine" = a2d.engine.live:LiveEngine ]; then
     say "점검 엔진: 실제 점검(LiveEngine). 피공격 서버에 읽기 요청만 보낸다"
   else
     say "점검 엔진: $engine"
   fi
-  txt_check
   llm_report
 }
 
@@ -370,8 +299,8 @@ status() {
 
 restart_api() {
   preflight
-  say "백엔드만 다시 띄웁니다 (apps/api/.env 반영. 진행 중인 점검이 있으면 끊기고, 로그인이 풀립니다)"
-  api_compose up -d --force-recreate api
+  say "백엔드만 다시 빌드해 띄웁니다 (apps/api/.env와 코드 반영. 진행 중인 점검이 있으면 끊기고, 로그인이 풀립니다)"
+  api_compose up -d --build --force-recreate api
   wait_api
   status_line
 }
@@ -391,9 +320,8 @@ case "${1:-}" in
   status)  status ;;
   reset)   reset ;;
   verify)  shift; verify "${1:-}" ;;
-  txt-check) shift; txt_check "${1:-}" ;;
   restart-api) restart_api ;;
   logs)    shift; logs "$@" ;;
   fix|break|preset|test-server|check|dns-on|dns-off) target "$@" ;;
-  *)       sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *)       sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
