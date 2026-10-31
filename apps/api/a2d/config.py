@@ -66,6 +66,9 @@ class Settings:
     # 점검 엔진. fixture = 시연 시나리오를 돌려주는 가짜 엔진, 또는 "패키지.모듈:클래스"
     engine: str = "fixture"
     fixture_step_sec: float = 0.4
+    # 점검 HTTP의 TLS 검증. 비우면 검증을 끈다(시연 대상은 자체 서명 인증서를 쓸 수 있고, 인증서
+    # 유효성은 #28이 따로 본다 — target/README "결함 상태의 TLS"). CA 묶음 경로를 넣으면 그 CA로 검증한다.
+    ca_bundle: str = ""
     request_limit: int = 300
     tool_call_limit: int = 20
     time_limit_sec: int = 300
@@ -90,6 +93,7 @@ class Settings:
             dns_servers=_list("A2D_DNS_SERVER"),
             engine=os.environ.get("A2D_ENGINE", "fixture").strip(),
             fixture_step_sec=_float("A2D_FIXTURE_STEP_SEC", 0.4),
+            ca_bundle=os.environ.get("A2D_CA_BUNDLE", "").strip(),
             request_limit=_int("A2D_REQUEST_LIMIT", 300),
             tool_call_limit=_int("A2D_TOOL_CALL_LIMIT", 20),
             time_limit_sec=_int("A2D_TIME_LIMIT_SEC", 300),
