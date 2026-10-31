@@ -1,0 +1,29 @@
+# 새 PR이나 이슈가 열릴 때만 팀 디스코드 채널에 알린다.
+# 웹훅 주소는 저장소 Secret DISCORD_WEBHOOK_URL에 둔다.
+name: Discord 알림
+
+on:
+  pull_request_target:
+    types: [opened]
+  issues:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 디스코드로 보내기
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          KIND: ${{ github.event_name == 'issues' && '이슈' || 'PR' }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          TITLE: ${{ github.event.pull_request.title || github.event.issue.title }}
+          AUTHOR: ${{ github.event.pull_request.user.login || github.event.issue.user.login }}
+          URL: ${{ github.event.pull_request.html_url || github.event.issue.html_url }}
+        run: |
+          content=$(printf '새 %s #%s %s (%s)\n%s' "$KIND" "$NUMBER" "$TITLE" "$AUTHOR" "$URL")
+          # 제목에 @everyone 같은 멘션이 있어도 울리지 않게 막는다
+          jq -n --arg content "$content" '{content: $content, allowed_mentions: {parse: []}}' |
+            curl -fsS -H "Content-Type: application/json" -d @- "$WEBHOOK"
