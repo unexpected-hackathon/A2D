@@ -53,7 +53,9 @@ a2d/
 ├── store.py        SQLite 저장소. 자산 ID·발견 ID를 점검이 바뀌어도 유지
 ├── engine/
 │   ├── base.py     엔진 연결 약속(Engine, EngineContext, RawAsset, RawFinding)
-│   └── fixture.py  시연 시나리오를 돌려주는 가짜 엔진 (네트워크 요청 없음)
+│   ├── fixture.py  시연 시나리오를 돌려주는 가짜 엔진 (네트워크 요청 없음)
+│   ├── net.py      점검용 HTTP(GET)·DNS·TLS 통로 (User-Agent·속도·예산)
+│   └── live.py     실제 대상을 읽기만 해서 점검하는 엔진 (LiveEngine)
 └── agents/         Attack·Defense 에이전트 연결 지점 (김강현)
 ```
 
@@ -62,6 +64,8 @@ a2d/
 엔진은 `engine.base.Engine`을 상속해 `run(ctx)`를 구현하고, `.env`의 `A2D_ENGINE=패키지.모듈:클래스`로 바꿔 끼운다(생성자는 `Settings`를 받는다). 엔진은 `ctx.add_asset`·`ctx.add_finding`으로 자산과 발견만 넘긴다. 발견 ID·점수·오늘 할 일·조치 가이드는 API가 만든다. 발견의 `situation`은 `catalog.SITUATIONS`의 키(예: `#16 "pii"`)이고, 증거는 가린 발췌(200자 이내)만 넘긴다.
 
 기본값 `A2D_ENGINE=fixture`는 `fixtures/demo_engine.json`을 점검 순서대로 돌려준다. target README의 시연 순서와 같다.
+
+실제 대상을 점검하려면 `A2D_ENGINE=a2d.engine.live:LiveEngine`로 바꾼다. `LiveEngine`은 자산 찾기(#1~#4·#6)와 1차 점검(#8~14·#16~21·#23·#25·#27·#28·#30~32)을 읽기(GET·DNS·TLS)만으로 돈다. 모든 요청에 식별 User-Agent를 붙이고, 요청 10초·호스트당 초당 2건·점검 300건 제한을 지킨다. 외부 조회(#5·#33)와 #34는 아직 다루지 않는다. 시연 대상은 자체 서명 인증서(#28)를 쓸 수 있어 HTTP 통로의 TLS 검증은 꺼져 있고, 인증서 유효성은 #28이 따로 본다. 시연 DNS를 쓰려면 `.env`의 `A2D_DNS_SERVER`에 시연 DNS 주소를 넣는다(target README "A2D 점검 엔진에서 붙기").
 
 | 회차 | 내용 | 안전 점수 |
 | --- | --- | --- |
