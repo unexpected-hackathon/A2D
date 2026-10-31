@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 
 from ..config import Settings
 from .base import Engine, EngineContext, EngineError, RawAsset, RawFinding
-from .net import (Dns, DnsResolver, DnsUnavailable, Fetched, HttpClient, Tls, TlsInspector,
+from .net import (CertInfo, Dns, DnsResolver, DnsUnavailable, Fetched, HttpClient, Tls, TlsInspector,
                   open_http_client)
 
 log = logging.getLogger("a2d.engine.live")
@@ -64,7 +64,24 @@ _HREF = re.compile(r'https?://([a-z0-9.\-]+)', re.I)
 # 우리 사이트가 가리키는 클라우드 저장소 버킷(#14). 이름을 추측하지 않고 코드에 나온 것만 본다.
 _CLOUD_HOST = re.compile(r'([a-z0-9.\-]+\.s3[a-z0-9.\-]*\.amazonaws\.com|[a-z0-9.\-]+\.blob\.core\.windows\.net|[a-z0-9.\-]+\.kr\.object\.ncloudstorage\.com)', re.I)
 _GENERATOR = re.compile(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']{1,60})', re.I)
-_JQUERY = re.compile(r"jquery[.-]?(\d+\.\d+\.\d+)", re.I)
+_JQUERY = re.compile(r"jquery[.@-]?v?(\d+\.\d+\.\d+)", re.I)
+_GENERATOR_VERSION = re.compile(r"^(.+?)\s+v?(\d+(?:\.\d+)*)\s*$")
+# 버전은 몰라도 쓰는 것만은 알 수 있는 부품(#24 식별 범위: 기존 방식 + 바이브코딩 방식)
+_FRAMEWORK_MARKS = (
+    ("WordPress", ("/wp-content/", "/wp-includes/")),
+    ("그누보드", ("g5_url", "/gnuboard")),
+    ("영카트", ("g5_shop_url", "youngcart")),
+    ("라이믹스", ("rhymix",)),
+    ("Next.js", ("/_next/static/", "__next_data__")),
+    ("Nuxt", ("/_nuxt/", "window.__nuxt__")),
+    ("React", ("data-reactroot", "react-dom")),
+    ("Supabase", (".supabase.co",)),
+    ("Firebase", ("firebaseapp.com", "firebaseio.com", "firebasejs")),
+)
+_PRODUCT_NAMES = {"apache": "Apache", "php": "PHP", "nginx": "nginx", "openssl": "OpenSSL",
+                  "iis": "IIS", "express": "Express"}
+# 서버 소프트웨어 버전을 읽을 자산(TLS 버전·인증서도 자산 찾기에서 한 번만 본다)
+TLS_ROLES = ("web", "api", "admin", "dev")
 
 # 내장한 취약 버전 목록(#23). 실제 서비스라면 주기적으로 갱신한다.
 KNOWN_VULNS = {
@@ -88,6 +105,8 @@ class Asset:
     importance_rule: str
     found_by: list[int] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    components: list[dict] = field(default_factory=list)  # #24 {"name", "version", "eol"}
+    cert: CertInfo | None = None  # 자산 찾기에서 본 인증서. #28이 다시 연결하지 않고 쓴다
 
 
 def _clip(text: str) -> str:
@@ -184,6 +203,7 @@ class LiveEngine(Engine):
                 cloud_hosts |= {m.group(1).lower() for m in _CLOUD_HOST.finditer(app_js.text)}
             if web_host in found:
                 found[web_host].found_by.append(2)
+                found[web_host].components = _identify_components(home)  # #24
         robots = await http.get(f"https://{web_host}/robots.txt")
         sitemap = await http.get(f"https://{web_host}/sitemap.xml")
         for doc in (robots, sitemap):
@@ -214,12 +234,21 @@ class LiveEngine(Engine):
                 found[host] = Asset(host, host.split(".")[0], "cloud", 5,
                                     "우리 사이트가 쓰는 클라우드 저장소", found_by=[14], tags=["cloud"])
 
+        # 인증서·TLS 버전: 우리 서버 자산마다 한 번씩, 동시에 본다(자산 정보 표시와 #28이 함께 쓴다)
+        ctx.budget.check()
+        tls_assets = [a for a in found.values() if a.role in TLS_ROLES]
+        certs = await asyncio.gather(*(asyncio.to_thread(self._tls.inspect, a.host) for a in tls_assets))
+        for a, cert in zip(tls_assets, certs):
+            a.cert = cert
+
         # 등록. 외부 ATS(#4 recruit)는 식별만 하고 자산 메모로 남긴다.
         assets = sorted(found.values(), key=lambda a: (self._role_order(a.role), a.host))
         for a in assets:
+            tls_version = _tls_label(a.cert.tls_version) if a.cert and not a.cert.error else None
             ctx.add_asset(RawAsset(host=a.host, alias=a.alias, url=f"https://{a.host}/",
                                    found_by=sorted(set(a.found_by)), tags=a.tags,
-                                   importance=a.importance, importance_rule=a.importance_rule))
+                                   importance=a.importance, importance_rule=a.importance_rule,
+                                   components=a.components, tls_version=tls_version))
         return assets
 
     async def _ensure_reachable(self, http: HttpClient, assets: list[Asset]) -> None:
@@ -345,7 +374,6 @@ class LiveEngine(Engine):
         home = await http.get(f"https://{a.host}/")
         if home is None:
             return
-        self._identify_components(home)  # #24: 로그만. 점수 미반영
         scripts = set(re.findall(r'src=["\']([^"\']+\.js)["\']', home.text))
         scripts.add("/static/js/app.js")
         checked = 0
@@ -528,7 +556,8 @@ class LiveEngine(Engine):
             self._add(ctx, a, 27, "basic", f"GET http://{a.host}/", "HTTP 접속을 HTTPS로 옮기지 않음")
 
     async def _check_tls(self, ctx, a: Asset) -> None:
-        info = await asyncio.to_thread(self._tls.inspect, a.host)  # TLS 핸드셰이크는 블로킹
+        # 자산 찾기에서 본 인증서를 쓴다. 없을 때만 다시 연결한다(TLS 핸드셰이크는 블로킹)
+        info = a.cert if a.cert is not None else await asyncio.to_thread(self._tls.inspect, a.host)
         if info.error or info.not_after is None:
             return
         days = (info.not_after - dt.datetime.now(dt.timezone.utc)).days
@@ -590,19 +619,42 @@ class LiveEngine(Engine):
         except ValueError:
             return False
 
-    def _identify_components(self, home: Fetched) -> None:
-        comps = []
-        m = _GENERATOR.search(home.text)
-        if m:
-            comps.append(m.group(1).strip())
-        jm = _JQUERY.search(home.text)
-        if jm:
-            comps.append(f"jQuery {jm.group(1)}")
-        if comps:
-            log.info("#24 부품 식별(%s): %s", home.url, ", ".join(comps))
-
 
 # ==================================================================== 보조 함수
+
+def _identify_components(home: Fetched) -> list[dict]:
+    """#24 홈페이지 부품 식별. 이미 받은 첫 화면(본문·헤더)만 읽는다. 점수에는 넣지 않고 자산 정보에 표시한다."""
+    comps: list[dict] = []
+
+    def add(name: str, version: str, eol: bool = False) -> None:
+        if all(c["name"].lower() != name.lower() for c in comps):
+            comps.append({"name": name, "version": version, "eol": eol})
+
+    m = _GENERATOR.search(home.text)
+    if m:
+        gen = m.group(1).strip()
+        gv = _GENERATOR_VERSION.match(gen)
+        add(*(gv.groups() if gv else (gen, "")))
+    jm = _JQUERY.search(home.text)
+    if jm:
+        add("jQuery", jm.group(1), eol=int(jm.group(1).split(".")[0]) < 3)  # 1.x·2.x는 지원 종료
+    server = f"{home.header('server') or ''} {home.header('x-powered-by') or ''}"
+    for product, version in _versions(server):
+        major_minor = ".".join(version.split(".")[:2])
+        add(_PRODUCT_NAMES.get(product, product), version, eol=(product, major_minor) in EOL)
+    low = home.text.lower()
+    for name, marks in _FRAMEWORK_MARKS:
+        if any(mark in low for mark in marks):
+            add(name, "")
+    return comps
+
+
+def _tls_label(version: str | None) -> str | None:
+    """ssl의 'TLSv1.3'을 API 명세의 'TLS 1.3' 표기로 바꾼다."""
+    if not version:
+        return None
+    return re.sub(r"^TLSv?(\d)", r"TLS \1", version)
+
 
 def _token() -> str:
     import secrets

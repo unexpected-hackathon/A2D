@@ -3,13 +3,13 @@
   "rounds": [
     {
       "assets": [
-        {"host": "{domain}", "alias": "{domain}", "url": "https://{domain}", "found_by": [1], "tags": ["web"], "importance": 4, "importance_rule": "대표 도메인", "components": [{"name": "jQuery", "version": "1.12.4", "eol": true}], "tls_version": "TLSv1.3"},
-        {"host": "www.{domain}", "alias": "www", "url": "https://www.{domain}", "found_by": [1, 2, 5], "tags": ["web"], "importance": 4, "importance_rule": "대표 도메인", "components": [{"name": "jQuery", "version": "1.12.4", "eol": true}, {"name": "JobNest CMS", "version": "2.3", "eol": false}], "tls_version": "TLSv1.3"},
-        {"host": "api.{domain}", "alias": "api", "url": "https://api.{domain}", "found_by": [1, 2, 5], "tags": ["api"], "importance": 5, "importance_rule": "개인정보 형태 응답", "components": [], "tls_version": "TLSv1.3"},
-        {"host": "admin.{domain}", "alias": "admin", "url": "https://admin.{domain}", "found_by": [1, 5], "tags": ["admin", "login"], "importance": 4, "importance_rule": "관리자 경로", "components": [], "tls_version": "TLSv1.3"},
-        {"host": "staging.{domain}", "alias": "staging", "url": "https://staging.{domain}", "found_by": [1, 5], "tags": ["dev"], "importance": 3, "importance_rule": "개발·테스트 이름", "components": [], "tls_version": "TLSv1.3"},
-        {"host": "dev.{domain}", "alias": "dev", "url": "https://dev.{domain}", "found_by": [1], "tags": ["dev"], "importance": 3, "importance_rule": "개발·테스트 이름", "components": [], "tls_version": "TLSv1.3"},
-        {"host": "recruit.{domain}", "alias": "recruit", "url": "https://recruit.{domain}", "found_by": [1, 4], "tags": ["vendor"], "importance": 3, "importance_rule": "일반 하위 서비스", "components": [], "tls_version": "TLSv1.3"}
+        {"host": "{domain}", "alias": "{domain}", "url": "https://{domain}", "found_by": [1], "tags": ["web"], "importance": 4, "importance_rule": "대표 도메인", "components": [{"name": "jQuery", "version": "1.12.4", "eol": true}], "tls_version": "TLS 1.3"},
+        {"host": "www.{domain}", "alias": "www", "url": "https://www.{domain}", "found_by": [1, 2, 5], "tags": ["web"], "importance": 4, "importance_rule": "대표 도메인", "components": [{"name": "jQuery", "version": "1.12.4", "eol": true}, {"name": "JobNest CMS", "version": "2.3", "eol": false}], "tls_version": "TLS 1.3"},
+        {"host": "api.{domain}", "alias": "api", "url": "https://api.{domain}", "found_by": [1, 2, 5], "tags": ["api"], "importance": 5, "importance_rule": "개인정보 형태 응답", "components": [], "tls_version": "TLS 1.3"},
+        {"host": "admin.{domain}", "alias": "admin", "url": "https://admin.{domain}", "found_by": [1, 5], "tags": ["admin", "login"], "importance": 4, "importance_rule": "관리자 경로", "components": [], "tls_version": "TLS 1.3"},
+        {"host": "staging.{domain}", "alias": "staging", "url": "https://staging.{domain}", "found_by": [1, 5], "tags": ["dev"], "importance": 3, "importance_rule": "개발·테스트 이름", "components": [], "tls_version": "TLS 1.3"},
+        {"host": "dev.{domain}", "alias": "dev", "url": "https://dev.{domain}", "found_by": [1], "tags": ["dev"], "importance": 3, "importance_rule": "개발·테스트 이름", "components": [], "tls_version": "TLS 1.3"},
+        {"host": "recruit.{domain}", "alias": "recruit", "url": "https://recruit.{domain}", "found_by": [1, 4], "tags": ["vendor"], "importance": 3, "importance_rule": "일반 하위 서비스", "components": [], "tls_version": "TLS 1.3"}
       ],
       "findings": [
         {"host": "api.{domain}", "check_id": 16, "situation": "pii", "location": "GET https://api.{domain}/api/v1/applicants", "evidence": "200 응답, 지원자 20명 목록. 이메일 형식 20건(k***@***.test 등), 전화번호 형식 20건 포함"},
@@ -24,7 +24,7 @@
     {
       "assets": "same+",
       "extra_assets": [
-        {"host": "test.{domain}", "alias": "test", "url": "https://test.{domain}", "found_by": [1, 5], "tags": ["dev"], "importance": 3, "importance_rule": "개발·테스트 이름", "components": [], "tls_version": "TLSv1.3"}
+        {"host": "test.{domain}", "alias": "test", "url": "https://test.{domain}", "found_by": [1, 5], "tags": ["dev"], "importance": 3, "importance_rule": "개발·테스트 이름", "components": [], "tls_version": "TLS 1.3"}
       ],
       "findings": [
         {"host": "test.{domain}", "check_id": 19, "situation": "debug", "location": "GET https://test.{domain}/", "evidence": "200 응답, 'TEST 서버 · DEBUG=True' 배너 표시"}
