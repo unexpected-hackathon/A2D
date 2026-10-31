@@ -1,6 +1,6 @@
 # 작업 규칙
 
-A2D는 **GitHub flow**로 작업한다. `main` 하나만 길게 살아 있고, 모든 변경은 짧은 브랜치에서 만들어 Pull Request(PR)로 `main`에 합친다.
+A2D는 **GitHub flow**로 작업한다. `main` 브랜치 하나만 계속 유지하고, 모든 변경은 짧은 브랜치에서 만들어 Pull Request(PR)로 `main`에 합친다.
 
 ## 1. GitHub flow
 
@@ -25,7 +25,7 @@ main ──●────────────●─────────
 6. **Squash merge로 합친다.** PR 하나가 `main`의 커밋 하나가 되고, PR 제목이 그 커밋 메시지가 된다.
 7. **머지한 브랜치는 지운다.**
 
-`main`이 앞서 나가 충돌이 나면 내 브랜치에서 `git pull --rebase origin main`으로 맞춘 뒤 다시 push한다(`--force-with-lease`). 남과 같이 쓰는 브랜치는 rebase하지 않는다.
+`main`이 앞서 나가 충돌이 나면 내 브랜치에서 `git pull --rebase origin main`으로 맞춘 뒤 다시 push한다(`--force-with-lease`). 다른 사람과 같이 쓰는 브랜치는 rebase하지 않는다.
 
 ## 2. 브랜치 이름
 
@@ -52,7 +52,7 @@ main ──●────────────●─────────
 ```
 <type>(<scope>): <요약>
 
-<본문: 무엇을, 왜 바꿨는지 (선택)>
+<본문 (선택): 바꾼 이유나 자세한 설명>
 ```
 
 - 요약은 한국어로 50자 안쪽, 끝에 마침표를 찍지 않는다.
@@ -61,7 +61,7 @@ main ──●────────────●─────────
 
 ### type
 
-| type | 쓰는 때 |
+| type | 용도 |
 | --- | --- |
 | `feat` | 새 기능 |
 | `fix` | 버그 수정 |
