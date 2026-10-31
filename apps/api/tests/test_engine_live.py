@@ -29,7 +29,8 @@ APPLICANTS = {"page": 1, "total": 40, "items": [
 
 def app_js(leak: bool, sourcemap: bool) -> str:
     """target/jobnest의 app.js처럼 leak이면 비밀키를, sourcemap이면 소스맵 주석을 넣는다."""
-    cfg = ('  aws: { bucket: "jobnest-resumes", accessKeyId: "AKIAZZ2EXAMPLE9ABCD" },\n'
+    # 비밀키 형태 문자열을 저장소에 그대로 두지 않으려고 실행 중에 이어 붙인다(target/config.py와 같은 방식)
+    cfg = (f'  aws: {{ bucket: "jobnest-resumes", accessKeyId: "{"AKIA" + "ZZ2QWERTY9ABCDEF"}" }},\n'
            '  payments: { stripeKey: "sk_live_abcdEFGH1234ijklMNOP" }\n' if leak else "")
     js = (f'var JN_CONFIG = {{ apiBase: "https://api.{DOMAIN}",\n{cfg}}};\n'
           f'fetch(JN_CONFIG.apiBase + "/api/v1/applicants?page=1");\n')
@@ -136,7 +137,9 @@ class FakeTarget:
         if path in ("/backup.zip", "/db.sql"):
             return resp(404, "nf") if 8 in fx else resp(200, "PK\x03\x04zipdata", media="application/zip")
         if path in ("/.env", "/.git/HEAD", "/.git/config"):
-            return resp(404, "nf") if 9 in fx else resp(200, "SECRET=1\n", media="text/plain")
+            body = {"/.env": "SECRET=1\n", "/.git/HEAD": "ref: refs/heads/main\n",
+                    "/.git/config": "[core]\n\tbare = false\n"}[path]
+            return resp(404, "nf") if 9 in fx else resp(200, body, media="text/plain")
         if path == "/uploads/":
             return resp(403, "blocked") if 10 in fx else resp(200, UPLOADS)
         if path == "/server-status":

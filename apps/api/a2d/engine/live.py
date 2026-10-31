@@ -31,8 +31,7 @@ SUBDOMAIN_WORDS = ("www", "api", "admin", "staging", "dev", "test", "mail", "rec
 
 SECURITY_HEADERS = ("strict-transport-security", "content-security-policy", "x-frame-options")
 # 공개돼 있으면 안 되는 운영 경로(#20). 환경 변수가 보이면 env, 상태·통계만 보이면 status.
-STATUS_PATHS = (("/actuator/env", "env"), ("/server-status", "status"), ("/phpinfo.php", "status"),
-                ("/metrics", "status"))
+STATUS_PATHS = ("/actuator/env", "/server-status", "/phpinfo.php", "/metrics")
 BACKUP_PATHS = ("/backup.zip", "/backup.sql", "/db.sql", "/dump.sql")
 CONFIG_PATHS = (("/.env", "env"), ("/.git/HEAD", "git"), ("/.git/config", "git"))
 API_DOC_PATHS = ("/openapi.json", "/swagger.json", "/swagger", "/docs", "/api-docs")
@@ -47,8 +46,13 @@ SECRET_PATTERNS = {
     "GitHub 토큰": re.compile(r"\b(?:ghp_|github_pat_)[0-9A-Za-z_]{20,}"),
     "OpenAI 키": re.compile(r"\bsk-proj-[0-9A-Za-z_-]{10,}"),
     "Anthropic 키": re.compile(r"\bsk-ant-[0-9A-Za-z_-]{10,}"),
-    "Supabase service_role 키": re.compile(r"service_role"),
+    "개인 키 파일": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----"),
 }
+# 문서·예제에 쓰는 자리표시 키(AWS 문서의 AKIAIOSFODNN7EXAMPLE 등)는 비밀키로 보지 않는다(점검점수설계 #12 조건).
+_PLACEHOLDER = re.compile(r"example|sample|dummy|placeholder|your[_-]?|x{6,}", re.I)
+# Supabase 키는 JWT라 앞부분이 공개 키(anon)와 같다. 본문(payload)의 role이 service_role일 때만 비밀키다.
+_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.(eyJ[A-Za-z0-9_-]{8,})\.[A-Za-z0-9_-]{8,}")
+_SOURCEMAP_URL = re.compile(r"[#@]\s*sourceMappingURL=([^\s'\"*]+)")
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?<!\d)01[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)")  # 숫자 경계: 주문번호·타임스탬프 오탐 방지
@@ -282,12 +286,13 @@ class LiveEngine(Engine):
             return
 
         if a.role == "web" and a.host == primary_host:  # 대표 웹 자산에서만(꼭짓점·www 중복 방지)
-            await self._check_files(ctx, http, a)       # #8 #9 #10
-            await self._check_error_page(ctx, http, a)  # #11
+            # 없는 주소부터 본다. 그 응답(모르는 경로를 index로 돌려주는 SPA 등)을 아래 경로 점검이 걸러 쓴다.
+            catch_all = await self._check_error_page(ctx, http, a)  # #11
+            await self._check_files(ctx, http, a, catch_all)       # #8 #9 #10
             await self._check_frontend(ctx, http, a)    # #12 #13 #24
-            await self._check_status_pages(ctx, http, a)  # #20
+            await self._check_status_pages(ctx, http, a, catch_all)  # #20
             if not admin_host_exists:  # admin 하위 도메인이 따로 있으면 거기서 한 번만 본다
-                await self._check_admin_path(ctx, http, a)  # #18 (www/admin)
+                await self._check_admin_path(ctx, http, a, catch_all)  # #18 (www/admin)
             await self._check_cookie(ctx, http, a)      # #31
         if a.role == "api":
             await self._check_unauth_api(ctx, http, a)  # #16
@@ -302,31 +307,38 @@ class LiveEngine(Engine):
             await self._check_server_wide(ctx, http, a)  # #23 #25 #30 #27 #28
 
     # ---------------------------------------------------------------- #8 #9 #10
-    async def _check_files(self, ctx, http, a: Asset) -> None:
+    async def _check_files(self, ctx, http, a: Asset, catch_all: Fetched | None = None) -> None:
         for path in BACKUP_PATHS:
             r = await http.get(f"https://{a.host}{path}")
             if r is not None and r.status == 200 and _looks_like_file(r):
                 self._add(ctx, a, 8, "confirmed", f"GET {r.url}",
                           f"{path} 200 응답, 파일 형식 확인(가림)")
                 break  # 자산당 한 건
+        reported: set[str] = set()
         for path, situation in CONFIG_PATHS:
+            if situation in reported:
+                continue  # 같은 저장소(.git)는 한 건으로 센다
             r = await http.get(f"https://{a.host}{path}")
-            if r is not None and r.status == 200 and r.text.strip():
-                self._add(ctx, a, 9, situation, f"GET {r.url}", f"{path} 200 응답(가림)")
+            if (r is not None and r.status == 200 and not _same_as(r, catch_all)
+                    and _config_file_matches(path, r)):
+                self._add(ctx, a, 9, situation, f"GET {r.url}", f"{path} 200 응답, 파일 형식 확인(가림)")
+                reported.add(situation)
         r = await http.get(f"https://{a.host}/uploads/")
         if r is not None and r.status == 200 and "index of" in r.text.lower():
             situation = "sensitive" if SENSITIVE_NAME.search(r.text) else "basic"
             self._add(ctx, a, 10, situation, f"GET {r.url}", "디렉터리 목록 공개(파일 이름 가림)")
 
     # ---------------------------------------------------------------- #11
-    async def _check_error_page(self, ctx, http, a: Asset) -> None:
+    async def _check_error_page(self, ctx, http, a: Asset) -> Fetched | None:
+        """#11을 보고, 없는 주소에 200으로 답하면 그 응답을 돌려준다(이후 경로 점검의 비교 기준)."""
         r = await http.get(f"https://{a.host}/a2d-check-{_token()}")
         if r is None:
-            return
+            return None
         low = r.text.lower()
         if r.status >= 500 or "traceback" in low or "stack trace" in low or "sqlalchemy" in low:
             self._add(ctx, a, 11, "basic", f"GET {r.url}",
                       f"없는 주소에 오류 {r.status}, 내부 코드 기록·경로 노출(가림)")
+        return r if r.status == 200 else None
 
     # ---------------------------------------------------------------- #12 #13 #24
     async def _check_frontend(self, ctx, http, a: Asset) -> None:
@@ -351,33 +363,37 @@ class LiveEngine(Engine):
             if kinds:
                 self._add(ctx, a, 12, "secret", f"GET {js.url}",
                           f"화면 코드에 {'·'.join(kinds)} 형태 키 노출(가림)")
-            if "sourcemappingurl" in js.text.lower():
-                mapr = await http.get(url + ".map")
-                if mapr is not None and mapr.status == 200:
-                    msecret = _secret_kinds(mapr.text)
-                    if msecret:
-                        self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
-                                  f"소스맵 안에 {'·'.join(msecret)} 형태 키 노출(가림)")
-                    else:
-                        self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
+            map_url = _sourcemap_url(js.text, url)
+            if map_url is None or not map_url.startswith(f"https://{a.host}/"):
+                continue  # 소스맵이 없거나, 코드 안에 들어 있거나(data:), 다른 곳에 있다
+            mapr = await http.get(map_url)
+            if mapr is None or mapr.status != 200 or not _is_sourcemap(mapr):
+                continue  # 모르는 경로를 index.html로 돌려주는 SPA는 소스맵 공개가 아니다
+            msecret = _secret_kinds(mapr.text)
+            if msecret and not kinds:  # 같은 키가 코드와 소스맵에 다 있으면 코드 쪽 한 건으로 센다
+                self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
+                          f"소스맵 안에 {'·'.join(msecret)} 형태 키 노출(가림)")
+            elif not msecret:
+                self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
 
     # ---------------------------------------------------------------- #20
-    async def _check_status_pages(self, ctx, http, a: Asset) -> None:
-        for path, situation in STATUS_PATHS:
+    async def _check_status_pages(self, ctx, http, a: Asset, catch_all: Fetched | None = None) -> None:
+        for path in STATUS_PATHS:
             r = await http.get(f"https://{a.host}{path}")
-            if r is None or r.status != 200:
+            if r is None or r.status != 200 or _same_as(r, catch_all) or not _status_page_matches(path, r):
                 continue
             low = r.text.lower()
-            if path == "/actuator/env" or "password" in low or "secret" in low or "db_" in low:
+            # 환경 변수 목록(actuator)이거나 phpinfo에 비밀값이 보이면 env. 통계만 보이면 status
+            if path == "/actuator/env" or (path == "/phpinfo.php" and ("password" in low or "secret" in low)):
                 self._add(ctx, a, 20, "env", f"GET {r.url}", f"{path} 공개, 환경 변수·비밀값 노출(가림)")
             else:
                 self._add(ctx, a, 20, "status", f"GET {r.url}", f"{path} 공개, 서버 상태·통계 노출")
 
     # ---------------------------------------------------------------- #18
-    async def _check_admin_path(self, ctx, http, a: Asset) -> None:
+    async def _check_admin_path(self, ctx, http, a: Asset, catch_all: Fetched | None = None) -> None:
         for path in ("/admin", "/admin/"):
             r = await http.get(f"https://{a.host}{path}")
-            if r is not None and r.status == 200 and _is_login(r.text):
+            if r is not None and r.status == 200 and not _same_as(r, catch_all) and _is_login(r.text):
                 self._add(ctx, a, 18, "basic", f"GET {r.url}", f"{path}에 관리자 로그인 화면 노출")
                 return
 
@@ -606,6 +622,69 @@ def _looks_like_file(r: Fetched) -> bool:
     return r.text[:8].startswith("PK\x03\x04") or any(head.startswith(m.upper()) for m in magic)
 
 
+def _is_html(r: Fetched) -> bool:
+    if "html" in (r.header("content-type") or ""):
+        return True
+    head = r.text[:256].lstrip().lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
+
+
+def _same_as(r: Fetched, catch_all: Fetched | None) -> bool:
+    """없는 주소의 200 응답과 같은 내용인지. 모르는 경로를 모두 index.html로 돌려주는 SPA를 걸러 낸다.
+
+    주소가 본문에 찍히는 서버가 있어 각자의 경로를 지우고 비교한다.
+    """
+    if catch_all is None or r.status != catch_all.status:
+        return False
+
+    def body(x: Fetched) -> str:
+        return x.text.replace(_url_path(x.url), "").strip()
+
+    return body(r) == body(catch_all)
+
+
+def _url_path(url: str) -> str:
+    rest = url.split("://", 1)[-1]
+    return "/" + rest.split("/", 1)[1] if "/" in rest else "/"
+
+
+_ENV_LINE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*[ \t]*=")
+_GIT_HEAD = re.compile(r"\s*(?:ref:[ \t]*refs/|[0-9a-f]{40}\b)")
+
+
+def _config_file_matches(path: str, r: Fetched) -> bool:
+    """설정 파일·저장소 파일의 실제 형식인지(#9). HTML이나 아무 텍스트로는 켜지 않는다."""
+    if _is_html(r):
+        return False
+    if path == "/.env":
+        return bool(_ENV_LINE.search(r.text))
+    if path == "/.git/HEAD":
+        return bool(_GIT_HEAD.match(r.text))
+    if path == "/.git/config":
+        return "[core]" in r.text
+    return False
+
+
+def _status_page_matches(path: str, r: Fetched) -> bool:
+    """운영·상태 페이지의 실제 내용인지(#20). 경로만 열려 있다고 켜지 않는다."""
+    import json
+
+    low = r.text.lower()
+    if path == "/actuator/env":
+        try:
+            obj = json.loads(r.text)
+        except ValueError:
+            return False
+        return isinstance(obj, dict) and bool({"propertySources", "activeProfiles"} & set(obj))
+    if path == "/server-status":
+        return "server status" in low or "total accesses" in low
+    if path == "/phpinfo.php":
+        return "phpinfo()" in low or "php version" in low
+    if path == "/metrics":
+        return not _is_html(r) and ("# help " in low or "# type " in low)
+    return False
+
+
 def _is_api_doc(r: Fetched) -> bool:
     """실제 API 설명서인지(#17). 일반 /docs 페이지가 걸리지 않게 OpenAPI JSON이나 UI 표식을 본다."""
     import json
@@ -627,8 +706,54 @@ def _is_login(text: str) -> bool:
 
 
 def _secret_kinds(text: str) -> list[str]:
-    """비밀키 형태를 센다. 공개용 키(pk_live_·AIza 등)만 있고 비밀키가 없으면 빈 목록."""
-    return [name for name, pat in SECRET_PATTERNS.items() if pat.search(text)]
+    """비밀키 형태를 센다. 공개용 키(pk_live_·AIza·Supabase anon 등)와 문서용 예시 키는 세지 않는다."""
+    kinds = [name for name, pat in SECRET_PATTERNS.items()
+             if any(not _PLACEHOLDER.search(m.group(0)) for m in pat.finditer(text))]
+    if any(_jwt_role(m.group(1)) == "service_role" for m in _JWT.finditer(text)):
+        kinds.append("Supabase service_role 키")
+    return kinds
+
+
+def _jwt_role(payload_b64: str) -> str | None:
+    import base64
+    import json
+
+    try:
+        raw = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
+        obj = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    role = obj.get("role") if isinstance(obj, dict) else None
+    return role if isinstance(role, str) else None
+
+
+def _sourcemap_url(js_text: str, js_url: str) -> str | None:
+    """코드 끝의 sourceMappingURL 주석이 가리키는 주소. 코드에 들어 있는 소스맵(data:)은 None."""
+    from urllib.parse import urljoin
+
+    found = _SOURCEMAP_URL.findall(js_text)
+    if not found or found[-1].startswith("data:"):
+        return None
+    return urljoin(js_url, found[-1])
+
+
+def _is_sourcemap(r: Fetched) -> bool:
+    import json
+
+    if _is_html(r):
+        return False
+    try:
+        obj = json.loads(r.text)
+    except ValueError:
+        return False
+    return isinstance(obj, dict) and bool({"mappings", "sources", "sourcesContent"} & set(obj))
+
+
+def _is_html(r: Fetched) -> bool:
+    if "html" in (r.header("content-type") or ""):
+        return True
+    head = r.text[:256].lstrip().lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
 
 
 def _pii_shape(r: Fetched) -> tuple[list[str], int | None]:
