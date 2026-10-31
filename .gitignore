@@ -34,6 +34,10 @@ yarn-error.log*
 .cache/
 hf_cache/
 
+# vLLM 실행 상태와 로그 (model/llm.sh)
+model/run/
+model/logs/
+
 # 에디터·OS
 .vscode/
 .idea/

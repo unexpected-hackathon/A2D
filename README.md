@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | [apps/web/](apps/web/README.md) | A2D 프론트엔드: 등록·대시보드·조치 가이드·기록 4개 화면 | 정인호 |
 | [apps/api/](apps/api/README.md) | A2D 백엔드: 소유권 확인, 자산 발견·점검 엔진, 위험 점수, Attack·Defense 에이전트 | 김성원, 김강현(에이전트) |
-| [model/](model/README.md) | AI 모델 배포 스크립트: GPU 서버에서 Qwen3-8B를 vLLM으로 서빙 | 김성원 |
+| [model/](model/README.md) | AI 모델 배포 스크립트: GPU 서버에서 Qwen3-8B를 vLLM으로 서빙, GPU 서버 설정 순서 | 김강현 |
 | [target/](target/README.md) | 피공격 서버: 결함을 일부러 심은 가상 채용·인재 매칭 플랫폼(시연 대상) | 김성원 |
 | [docs/](docs/) | 기획서, 상세 설계, 점검·점수 설계, PRD, API 명세, 정보 구조도 | 김강현 |
 | [brand/](brand/logo/README.md) | 로고와 색 | 김강현 |
@@ -68,7 +68,10 @@ cd ../../target
 | 자원 | 용도 | 라이선스 |
 | --- | --- | --- |
 | Qwen3-8B | Attack·Defense 에이전트 LLM | Apache 2.0 |
-| vLLM | 모델 서빙 (OpenAI 호환 엔드포인트) | Apache 2.0 |
+| vLLM 0.31.0 | 모델 서빙 (OpenAI 호환 엔드포인트) | Apache 2.0 |
+| PyTorch 2.13.0 (vLLM 의존성) | 모델 실행 | BSD-3-Clause |
+| Hugging Face Hub CLI (`hf`, vLLM 의존성) | 모델 가중치 내려받기 | Apache 2.0 |
+| uv 0.13.6 | GPU 서버 Python 가상 환경·패키지 설치 | Apache 2.0 · MIT |
 | FastAPI 0.115.6 · Uvicorn 0.34.0 | 피공격 서버 앱 | MIT · BSD-3-Clause |
 | cryptography 44.0.0 | 피공격 서버 시연 인증서 생성 | Apache 2.0 · BSD |
 | nginx 1.27.4 (Docker 이미지) | 피공격 서버 TLS 프록시 | BSD-2-Clause |

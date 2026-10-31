@@ -73,7 +73,7 @@ class Settings:
     # LLM(강현 님 GPU 서버의 vLLM, OpenAI 호환). 비어 있으면 llm=down, 기본 가이드로 동작한다
     llm_base_url: str = ""
     llm_api_key: str = ""
-    llm_model: str = "Qwen/Qwen3-8B"
+    llm_model: str = "qwen3-8b"  # model/의 SERVED_MODEL_NAME과 같게 둔다
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -95,5 +95,5 @@ class Settings:
             time_limit_sec=_int("A2D_TIME_LIMIT_SEC", 300),
             llm_base_url=os.environ.get("A2D_LLM_BASE_URL", "").rstrip("/"),
             llm_api_key=os.environ.get("A2D_LLM_API_KEY", ""),
-            llm_model=os.environ.get("A2D_LLM_MODEL", "Qwen/Qwen3-8B"),
+            llm_model=os.environ.get("A2D_LLM_MODEL", "qwen3-8b"),
         )
