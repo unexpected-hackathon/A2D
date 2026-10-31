@@ -284,7 +284,14 @@ class Service:
                 engine_complete = True
                 set_stage("agent", STAGE_NAMES["agent"], 0, 1)
                 try:
-                    await agents.run_attack(self.llm, ctx, {"asset_ids": [a["asset_id"] for a in assets.values()]})
+                    await agents.run_attack(self.llm, ctx, {
+                        "assets": [{"asset_id": a["asset_id"], "host": a["host"], "alias": a["alias"],
+                                    "tags": a["tags"], "importance": a["importance"]}
+                                   for a in assets.values()],
+                        "findings": [{"asset_id": f["asset_id"], "check_id": f["check_id"],
+                                      "situation": f["situation_key"]}
+                                     for f in findings.values()],
+                    })
                 except ScanStopped:
                     raise
                 except Exception:  # 에이전트가 실패해도 기본 점검 결과로 진행한다
