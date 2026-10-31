@@ -100,7 +100,7 @@ function Dashboard({ domainId }: { domainId: string }) {
 
       {summary.data?.latest_scan && (
         <>
-          {/* 1024px 이상에서 점수 카드 : 오늘 할 일 = 2 : 3 (global.css .a2d-grid) */}
+          {/* 내용 영역 폭 720px 이상에서 점수 카드 : 오늘 할 일 = 2 : 3 (global.css .a2d-grid--hero) */}
           <div className="a2d-grid a2d-grid--hero">
             <ScoreCard summary={summary.data} onRescan={() => void scan.start()} scanning={scan.isRunning} />
             <TodayTasks
