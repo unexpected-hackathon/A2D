@@ -296,14 +296,14 @@ def test_all_defects_found():
     got = found(findings)
     expected = {
         (6, "dangling"), (8, "confirmed"), (9, "env"), (9, "git"), (10, "sensitive"),
-        (11, "basic"), (12, "secret"), (14, "sensitive"), (16, "pii"),
+        (11, "basic"), (12, "secret"), (13, "basic"), (14, "sensitive"), (16, "pii"),
         (17, "basic"), (18, "basic"), (19, "debug"), (20, "env"), (20, "status"),
         (21, "any_origin"), (23, "kev"), (25, "server"), (27, "basic"), (28, "expiring14"),
         (30, "basic"), (31, "login"), (32, "none"),
     }
     missing = expected - got
     assert not missing, f"못 찾은 결함: {sorted(missing)}"
-    # 소스맵(#13)은 키가 들어 있으면 #12로 보고된다(점수설계 결정). 키가 없을 때만 #13.
+    # 소스맵(#13)은 키가 들어 있어도 #13으로 남고, 그 키는 코드 쪽 #12 한 건으로 센다.
 
 
 def test_sourcemap_without_keys_reports_13():
@@ -415,3 +415,15 @@ def test_end_to_end_scan_through_service(tmp_path):
         assert summary["grade"] in ("F", "D", "C")  # 결함이 많아 낮은 등급
         assert 0 <= summary["safety_score"] < 90
         assert summary["today_tasks"], "오늘 할 일이 비어 있음"
+
+
+def test_untrusted_issuer_reports_28(monkeypatch):
+    """A2D_CA_BUNDLE로 체인을 검증해 믿을 수 없는 발급자(trusted=False)로 나오면 자체 서명이 아니어도 #28이다."""
+    def untrusted(self, host, port=443):
+        return CertInfo(not_after=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=365),
+                        self_signed=False, hostname_ok=True, trusted=False)
+
+    monkeypatch.setattr(FakeTls, "inspect", untrusted)
+    all_faults = {6, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 23, 25, 27, 28, 30, 31, 32}
+    _, findings, _, _ = run_engine(all_faults)
+    assert found(findings) == {(28, "invalid")}

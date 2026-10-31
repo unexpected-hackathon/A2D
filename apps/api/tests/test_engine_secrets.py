@@ -63,4 +63,6 @@ def test_key_in_code_and_sourcemap_reported_once():
     _, findings, _, _ = run_engine(set())
     secrets = [f for f in findings if f.check_id == 12]
     assert len(secrets) == 1 and secrets[0].location.endswith("/static/js/app.js")
-    assert (13, "basic") not in found(findings)  # 키가 든 소스맵은 #12로만 센다
+    # 소스맵이 열린 것 자체는 #13으로 따로 남는다. 안 그러면 #12를 고친 뒤 재점검에서 #13이 새 발견으로 튀어나온다
+    maps = [f for f in findings if f.check_id == 13]
+    assert len(maps) == 1 and maps[0].location.endswith("/static/js/app.js.map")

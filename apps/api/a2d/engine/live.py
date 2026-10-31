@@ -121,13 +121,15 @@ class LiveEngine(Engine):
         self._dns = dns if dns is not None else DnsResolver(settings.dns_servers)
         # 점검 DNS를 정했으면 HTTP·TLS 접속도 같은 DNS로 주소를 찾는다(자산 찾기와 접속이 같은 곳을 보게)
         self._resolve = self._dns.a if settings.dns_servers else None
-        self._tls = tls if tls is not None else TlsInspector(resolve=self._resolve)
+        # A2D_CA_BUNDLE은 #28이 인증서 발급 체인을 검증할 때만 쓴다. 내용 조회는 검증하지 않는다(net.open_http_client)
+        self._tls = tls if tls is not None else TlsInspector(resolve=self._resolve,
+                                                             ca_bundle=settings.ca_bundle or None)
         self._client = client            # 테스트에서 httpx.MockTransport를 끼운다
         self._owns_client = client is None
         self._interval = host_min_interval
 
     async def run(self, ctx: EngineContext) -> None:
-        client = self._client or open_http_client(self.s.ca_bundle or False, resolve=self._resolve)
+        client = self._client or open_http_client(resolve=self._resolve)
         interval = self._interval if self._interval is not None else None
         http = HttpClient(ctx.budget, client) if interval is None else \
             HttpClient(ctx.budget, client, host_min_interval=interval)
@@ -406,12 +408,13 @@ class LiveEngine(Engine):
             mapr = await http.get(map_url)
             if mapr is None or mapr.status != 200 or not _is_sourcemap(mapr):
                 continue  # 모르는 경로를 index.html로 돌려주는 SPA는 소스맵 공개가 아니다
+            # 열린 소스맵은 #13(낮음)으로 남기고, 안의 비밀키는 #12로 따로 보고한다(점검점수설계 #13).
+            # 같은 키가 코드와 소스맵에 다 있으면 #12는 코드 쪽 한 건으로 센다.
+            self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
             msecret = _secret_kinds(mapr.text)
-            if msecret and not kinds:  # 같은 키가 코드와 소스맵에 다 있으면 코드 쪽 한 건으로 센다
+            if msecret and not kinds:
                 self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
                           f"소스맵 안에 {'·'.join(msecret)} 형태 키 노출(가림)")
-            elif not msecret:
-                self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
 
     # ---------------------------------------------------------------- #20
     async def _check_status_pages(self, ctx, http, a: Asset, catch_all: Fetched | None = None) -> None:
@@ -582,9 +585,9 @@ class LiveEngine(Engine):
         elif days <= 30:
             situation = "expiring30"
             ev = f"인증서가 {days}일 뒤 만료"
-        elif info.self_signed or not info.hostname_ok:
+        elif info.self_signed or not info.hostname_ok or info.trusted is False:
             situation = "invalid"
-            ev = "자체 서명이거나 이름이 맞지 않는 인증서"
+            ev = "자체 서명이거나 이름이 맞지 않거나 믿을 수 없는 기관이 발급한 인증서"
         else:
             return
         self._add(ctx, a, 28, situation, f"TLS https://{a.host}", ev)
