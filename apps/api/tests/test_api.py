@@ -327,3 +327,31 @@ def test_trust_mode_skips_txt_only_for_reserved_tlds(client, monkeypatch):
         assert body["verify_status"] == "failed" and "TXT 레코드를 찾지 못했습니다" in body["reason"]
         assert client.post(f"/api/v1/domains/{d['domain_id']}/scans").status_code == 409
     assert looked == ["_a2d-verify.jobnest.com", "_a2d-verify.test.co.kr", "_a2d-verify.mytest.io"]
+
+
+def test_trust_domains_pass_without_txt_only_in_trust_mode(tmp_path, monkeypatch):
+    """A2D_TRUST_DOMAINS에 적은 실제 도메인(하위 도메인 포함)은 trust에서 TXT 없이 통과한다. 비슷한 이름이나 dns 모드는 아니다."""
+    from a2d.service import Service
+
+    looked: list[str] = []
+
+    async def no_txt(self, name):
+        looked.append(name)
+        return []
+
+    monkeypatch.setattr(Service, "_lookup_txt", no_txt)
+    for mode in ("trust", "dns"):
+        s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / f"{mode}.sqlite3"),
+                     web_origins=[ORIGIN], verify_mode=mode, fixture_step_sec=0, trust_domains=["codykata.com"])
+        with TestClient(create_app(s), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
+            login(c)
+            got = {}
+            for name in ("codykata.com", "www.codykata.com", "notcodykata.com", "codykata.com.evil.io"):
+                d = c.post("/api/v1/domains", json={"domain": name}).json()
+                got[name] = c.post(f"/api/v1/domains/{d['domain_id']}/verify").json()["verify_status"]
+        if mode == "trust":
+            assert got == {"codykata.com": "verified", "www.codykata.com": "verified",
+                           "notcodykata.com": "failed", "codykata.com.evil.io": "failed"}
+        else:
+            assert set(got.values()) == {"failed"}  # dns 모드에서는 목록과 상관없이 TXT로 확인한다
+    assert "_a2d-verify.codykata.com" in looked and "_a2d-verify.notcodykata.com" in looked

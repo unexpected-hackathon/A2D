@@ -178,11 +178,18 @@ class Service:
             return None
         return [b"".join(x.strings).decode("utf-8", "replace") for x in ans]
 
+    def _trusted(self, domain: str) -> bool:
+        """trust 모드에서 TXT 없이 통과시킬 도메인인가. 예약 최상위 도메인이거나, 운영자가 A2D_TRUST_DOMAINS에 적은
+        도메인(또는 그 하위 도메인)일 때만 그렇다. 그 밖의 실제 도메인은 trust여도 TXT로 확인한다."""
+        if domain.rsplit(".", 1)[-1] in TRUST_TLDS:
+            return True
+        return any(domain == t or domain.endswith("." + t) for t in self.s.trust_domains)
+
     async def verify_domain(self, domain_id: str) -> dict:
         d = self._domain_or_404(domain_id)
         reason = None
         if d["verify_status"] != "verified":
-            if self.s.verify_mode == "trust" and d["domain"].rsplit(".", 1)[-1] in TRUST_TLDS:
+            if self.s.verify_mode == "trust" and self._trusted(d["domain"]):
                 ok = True
             else:
                 values = await self._lookup_txt(f"{VERIFY_LABEL}.{d['domain']}")
