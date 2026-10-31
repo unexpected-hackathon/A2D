@@ -23,9 +23,9 @@ export function TodayTasks({ scanId, tasks, currentScore }: TodayTasksProps) {
   const reduce = useReducedMotion()
 
   return (
-    <Surface height="full">
+    <Surface>
       <VStack gap="x4">
-        <HStack justify="space-between" align="flex-end">
+        <HStack justify="space-between" align="flex-end" gap="x2" wrap>
           <Text textStyle="t5Bold" color="fg.neutral">
             오늘 할 일 3가지
           </Text>
@@ -51,7 +51,7 @@ export function TodayTasks({ scanId, tasks, currentScore }: TodayTasksProps) {
                   whileHover={reduce ? undefined : { y: -1 }}
                   className="a2d-task"
                 >
-                  <HStack gap="x4" align="center">
+                  <div className="a2d-task-grid">
                     {/* 순서 번호 */}
                     <VStack
                       align="center"
@@ -67,7 +67,7 @@ export function TodayTasks({ scanId, tasks, currentScore }: TodayTasksProps) {
                       </Text>
                     </VStack>
 
-                    <VStack gap="x1" grow>
+                    <VStack gap="x1" className="a2d-task-main">
                       <HStack gap="x2" align="center" wrap>
                         <SeverityBadge severity={task.severity} />
                         <Text textStyle="t5Bold" color="fg.neutral">
@@ -80,7 +80,7 @@ export function TodayTasks({ scanId, tasks, currentScore }: TodayTasksProps) {
                     </VStack>
 
                     {/* 고치면 안전 점수가 어떻게 바뀌는지 */}
-                    <VStack align="flex-end" gap="x0_5" flexShrink={0}>
+                    <VStack gap="x0_5" className="a2d-task-score">
                       <Text textStyle="t2Medium" color="fg.neutralSubtle">
                         고치면
                       </Text>
@@ -100,7 +100,7 @@ export function TodayTasks({ scanId, tasks, currentScore }: TodayTasksProps) {
                       </Text>
                     </VStack>
                     <Icon svg={<IconChevronRightLine />} color="fg.neutralSubtle" size="x4" />
-                  </HStack>
+                  </div>
                 </motion.button>
               )
             })}

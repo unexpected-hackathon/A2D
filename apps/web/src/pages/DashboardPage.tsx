@@ -9,7 +9,7 @@
 //   6) 새 노출 알림(2-4): summary.alerts
 
 import { IconBellFill } from '@karrotmarket/react-monochrome-icon'
-import { Grid, Skeleton, VStack } from '@seed-design/react'
+import { Skeleton, VStack } from '@seed-design/react'
 import { useState } from 'react'
 import { Callout } from 'seed-design/ui/callout'
 import { ActionablePageBanner } from 'seed-design/ui/page-banner'
@@ -101,23 +101,23 @@ function Dashboard({ domainId }: { domainId: string }) {
 
       {summary.data?.latest_scan && (
         <>
-          {/* 넓은 화면에서 점수 카드 : 오늘 할 일 = 2 : 3 */}
-          <Grid columns={{ base: 1, lg: '2fr 3fr' }} gap="x5">
+          {/* 1024px 이상에서 점수 카드 : 오늘 할 일 = 2 : 3 (global.css .a2d-grid) */}
+          <div className="a2d-grid a2d-grid--hero">
             <ScoreCard summary={summary.data} onRescan={() => void scan.start()} scanning={scan.isRunning} />
             <TodayTasks
               scanId={summary.data.latest_scan.scan_id}
               tasks={summary.data.today_tasks}
               currentScore={summary.data.safety_score}
             />
-          </Grid>
-          <Grid columns={{ base: 1, lg: 2 }} gap="x5" alignItems="flex-start">
+          </div>
+          <div className="a2d-grid a2d-grid--half" style={{ alignItems: 'start' }}>
             {assets.data ? <AssetList assets={assets.data.items} onSelect={setSelectedAsset} /> : <ListSkeleton />}
             {findings.data ? (
               <FindingList findings={findings.data.items} onSelect={setSelectedFindingId} />
             ) : (
               <ListSkeleton />
             )}
-          </Grid>
+          </div>
         </>
       )}
 
@@ -134,10 +134,10 @@ function Dashboard({ domainId }: { domainId: string }) {
 
 function DashboardSkeleton() {
   return (
-    <Grid columns={{ base: 1, lg: '2fr 3fr' }} gap="x5">
+    <div className="a2d-grid a2d-grid--hero">
       <Skeleton radius="16" height="300px" width="full" />
       <Skeleton radius="16" height="300px" width="full" />
-    </Grid>
+    </div>
   )
 }
 

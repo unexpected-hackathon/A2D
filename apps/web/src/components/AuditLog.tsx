@@ -4,7 +4,7 @@
 import { Box, HStack, Text, VStack } from '@seed-design/react'
 import { useState } from 'react'
 import { Badge } from 'seed-design/ui/badge'
-import { ChipTabsList, ChipTabsRoot, ChipTabsTrigger } from 'seed-design/ui/chip-tabs'
+import { ChipTabsCarousel, ChipTabsList, ChipTabsRoot, ChipTabsTrigger } from 'seed-design/ui/chip-tabs'
 import { ResultSection } from 'seed-design/ui/result-section'
 import type { AuditEntry } from '../api/types'
 
@@ -31,13 +31,15 @@ export function AuditLog({ entries }: { entries: AuditEntry[] }) {
   return (
     <VStack gap="x4">
       <ChipTabsRoot value={filter} onValueChange={setFilter} size="medium" variant="neutralOutline">
-        <ChipTabsList>
-          {FILTERS.map((f) => (
-            <ChipTabsTrigger key={f.value} value={f.value}>
-              {f.label}
-            </ChipTabsTrigger>
-          ))}
-        </ChipTabsList>
+        <ChipTabsCarousel>
+          <ChipTabsList>
+            {FILTERS.map((f) => (
+              <ChipTabsTrigger key={f.value} value={f.value}>
+                {f.label}
+              </ChipTabsTrigger>
+            ))}
+          </ChipTabsList>
+        </ChipTabsCarousel>
       </ChipTabsRoot>
 
       {shown.length === 0 ? (

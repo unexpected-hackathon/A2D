@@ -7,7 +7,7 @@
 //   4) "한 장 요약 내보내기"(4-5) → /export 인쇄용 화면
 
 import { IconDocumentArrowLeftLine } from '@karrotmarket/react-monochrome-icon'
-import { Grid, HStack, PrefixIcon, Skeleton, Text, VStack } from '@seed-design/react'
+import { HStack, PrefixIcon, Skeleton, Text, VStack } from '@seed-design/react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ActionButton } from 'seed-design/ui/action-button'
@@ -74,7 +74,7 @@ function History({ domainId }: { domainId: string }) {
           {/* 4-1 점수 추이 */}
           <Surface>
             <VStack gap="x3">
-              <HStack justify="space-between" align="flex-end">
+              <HStack justify="space-between" align="flex-end" gap="x2" wrap>
                 <Text textStyle="t5Bold" color="fg.neutral">
                   안전 점수 추이
                 </Text>
@@ -86,7 +86,7 @@ function History({ domainId }: { domainId: string }) {
             </VStack>
           </Surface>
 
-          <Grid columns={{ base: 1, lg: '1fr 2fr' }} gap="x5" alignItems="flex-start">
+          <div className="a2d-grid a2d-grid--side">
             {/* 4-2 점검 목록 (최근 것이 위) */}
             <Surface p="x0">
               <VStack>
@@ -153,7 +153,7 @@ function History({ domainId }: { domainId: string }) {
                 </TabsRoot>
               </Surface>
             )}
-          </Grid>
+          </div>
         </>
       )}
 

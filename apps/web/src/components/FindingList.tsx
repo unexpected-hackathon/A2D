@@ -3,7 +3,7 @@
 
 import { HStack, Text, VStack } from '@seed-design/react'
 import { useState } from 'react'
-import { ChipTabsList, ChipTabsRoot, ChipTabsTrigger } from 'seed-design/ui/chip-tabs'
+import { ChipTabsCarousel, ChipTabsList, ChipTabsRoot, ChipTabsTrigger } from 'seed-design/ui/chip-tabs'
 import { ResultSection } from 'seed-design/ui/result-section'
 import type { FindingSummary, Severity } from '../api/types'
 import { findingStatusLabel, severityStyle } from '../theme/severity'
@@ -34,7 +34,8 @@ export function FindingList({ findings, onSelect }: FindingListProps) {
             </Text>
           </HStack>
           <ChipTabsRoot value={filter} onValueChange={setFilter} size="medium" variant="neutralOutline">
-            <ChipTabsList>
+            <ChipTabsCarousel>
+              <ChipTabsList>
               {FILTERS.map((f) => {
                 const count = f === 'all' ? findings.length : findings.filter((x) => x.severity === f).length
                 return (
@@ -43,7 +44,8 @@ export function FindingList({ findings, onSelect }: FindingListProps) {
                   </ChipTabsTrigger>
                 )
               })}
-            </ChipTabsList>
+              </ChipTabsList>
+            </ChipTabsCarousel>
           </ChipTabsRoot>
         </VStack>
 
@@ -54,7 +56,7 @@ export function FindingList({ findings, onSelect }: FindingListProps) {
             <button key={f.finding_id} type="button" onClick={() => onSelect(f.finding_id)} className="a2d-row">
               <HStack gap="x3" align="center" px="x5" py="x3">
                 <SeverityBadge severity={f.severity} />
-                <VStack gap="x0_5" grow>
+                <VStack gap="x0_5" grow className="a2d-min0">
                   <Text textStyle="t4Bold" color="fg.neutral">
                     {f.check_name}
                   </Text>
@@ -68,7 +70,7 @@ export function FindingList({ findings, onSelect }: FindingListProps) {
                   </Text>
                 )}
                 <ConfidenceBadge confidence={f.confidence} />
-                <Text textStyle="t5Bold" color="fg.neutral" style={{ minWidth: 28, textAlign: 'right' }}>
+                <Text textStyle="t5Bold" color="fg.neutral" className="a2d-keep" style={{ minWidth: 28, textAlign: 'right' }}>
                   {f.risk_score}
                 </Text>
               </HStack>

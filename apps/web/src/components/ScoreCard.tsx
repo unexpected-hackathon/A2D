@@ -2,7 +2,7 @@
 // 원형 게이지가 점수만큼 차오르고, 가운데 숫자는 SEED AnimateNumber로 굴러가며 바뀐다.
 // 재점검으로 점수가 바뀌면 같은 모션으로 새 값까지 움직인다.
 
-import { Grid, HStack, Text, VStack } from '@seed-design/react'
+import { HStack, Text, VStack } from '@seed-design/react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import AnimateNumber from 'seed-design/breeze/animate-number/animate-number'
@@ -39,10 +39,10 @@ export function ScoreCard({ summary, onRescan, scanning }: ScoreCardProps) {
   const color = TONE_COLOR[tone] ?? 'var(--seed-color-fg-brand)'
 
   return (
-    <Surface height="full">
-      <VStack gap="x5" height="full">
-        <HStack justify="space-between" align="center">
-          <HStack gap="x2" align="center">
+    <Surface display="flex" flexDirection="column">
+      <VStack gap="x5" grow>
+        <HStack justify="space-between" align="center" gap="x2" wrap>
+          <HStack gap="x2" align="center" wrap>
             <Text textStyle="t5Bold" color="fg.neutral">
               안전 점수
             </Text>
@@ -53,7 +53,7 @@ export function ScoreCard({ summary, onRescan, scanning }: ScoreCardProps) {
           </ActionButton>
         </HStack>
 
-        <HStack gap="x6" align="center" wrap>
+        <div className="a2d-score-body">
           {/* 원형 게이지: 회색 바탕 원 위에 점수 비율만큼 색 원을 그린다 */}
           <div style={{ position: 'relative', width: SIZE, height: SIZE, flexShrink: 0 }}>
             <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ transform: 'rotate(-90deg)' }} aria-hidden="true">
@@ -85,12 +85,12 @@ export function ScoreCard({ summary, onRescan, scanning }: ScoreCardProps) {
             </VStack>
           </div>
 
-          <VStack gap="x3" grow>
+          <VStack gap="x3" className="a2d-score-text">
             <Text textStyle="t4Regular" color="fg.neutralMuted">
               가장 심각한 문제가 점수의 70%를 정하고, 나머지 문제가 쌓이면 더 내려갑니다.
             </Text>
             {/* 등급별 발견 수 */}
-            <Grid columns={4} gap="x2">
+            <div className="a2d-counts">
               {SEVERITY_ORDER.map((s) => (
                 <VStack key={s} gap="x0_5" px="x3" py="x2" borderRadius="r3" bg="bg.neutralWeak">
                   <Text textStyle="t2Medium" color="fg.neutralSubtle">
@@ -101,12 +101,12 @@ export function ScoreCard({ summary, onRescan, scanning }: ScoreCardProps) {
                   </Text>
                 </VStack>
               ))}
-            </Grid>
+            </div>
           </VStack>
-        </HStack>
+        </div>
 
         <VStack gap="x2" mt="auto">
-          <HStack justify="space-between" align="center">
+          <HStack justify="space-between" align="center" gap="x2" wrap>
             <Text textStyle="t3Regular" color="fg.neutralSubtle">
               {summary.latest_scan ? `${formatDateTime(summary.latest_scan.finished_at)} 점검` : '아직 점검 전'}
             </Text>

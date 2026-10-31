@@ -123,3 +123,80 @@ body {
     padding: 0 !important;
   }
 }
+
+/* ---------- 반응형 배치 ----------
+ * SEED 기본 구간(lg = 1280px)은 왼쪽 메뉴 240px를 뺀 우리 화면에 맞지 않아 직접 정한다.
+ *   ~767px   휴대폰: 한 단, 왼쪽 메뉴는 접힘(AppShell)
+ *   768~1023 태블릿: 한 단
+ *   1024px~  노트북 이상: 두 단
+ */
+.a2d-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.a2d-grid > * {
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  .a2d-grid--hero { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+  .a2d-grid--side { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: start; }
+}
+/* 자산·발견 목록은 줄마다 배지가 여러 개라 더 넓어야 두 단이 된다 */
+@media (min-width: 1280px) {
+  .a2d-grid--half { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 배지·점수처럼 줄어들면 안 되는 것 */
+.a2d-keep {
+  flex-shrink: 0;
+}
+
+/* 오늘 할 일 한 줄 안: 순서 | 제목 | 고치면 점수 | 화살표. 좁으면 점수가 제목 아래로 내려간다 */
+.a2d-task-grid {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto 16px;
+  gap: 8px 16px;
+  align-items: center;
+}
+.a2d-task-main {
+  min-width: 0;
+}
+.a2d-task-score {
+  justify-self: end;
+}
+@media (max-width: 599px) {
+  .a2d-task-grid { grid-template-columns: 36px minmax(0, 1fr) 16px; }
+  .a2d-task-score { grid-column: 2; justify-self: start; }
+}
+
+/* 등급별 발견 수: 들어가는 만큼 한 줄에, 휴대폰에서는 2×2로 */
+.a2d-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px;
+}
+@media (max-width: 479px) {
+  .a2d-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 점수 게이지와 설명: 좁으면 세로로 쌓이고 가운데 정렬 */
+.a2d-score-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+}
+.a2d-score-body > .a2d-score-text {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+@media (max-width: 479px) {
+  .a2d-score-body { justify-content: center; }
+}
+
+/* 글자가 들어가는 늘어나는 칸: 한 글자씩 끊기지 않게 */
+.a2d-min0 {
+  min-width: 0;
+}

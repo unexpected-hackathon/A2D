@@ -100,7 +100,7 @@ function Guide({ scanId }: { scanId: string }) {
                   ? '모든 문장이 실제 발견과 연결돼 있습니다.'
                   : `${guide.data.verification.total - guide.data.verification.passed}개 항목은 근거 확인이 끝나지 않았습니다. 기술 근거를 함께 확인해 주세요.`}
               </Text>
-              <HStack gap="x2" ml="auto" align="center">
+              <HStack gap="x2" ml="auto" align="center" wrap>
                 <Badge tone={guide.data.source === 'llm' ? 'brand' : 'neutral'} variant="weak" size="large">
                   {guide.data.source === 'llm' ? 'AI 설명' : '기본 가이드'}
                 </Badge>
@@ -216,7 +216,7 @@ function GuideCard({
                 {item.rank}
               </Text>
             </VStack>
-            <VStack gap="x1" grow>
+            <VStack gap="x1" grow className="a2d-min0">
               <HStack gap="x2" align="center" wrap>
                 <Text as="h2" textStyle="t7Bold" color="fg.neutral">
                   {item.title}
@@ -264,7 +264,7 @@ function GuideCard({
             </VStack>
           </VStack>
 
-          <HStack justify="space-between" align="center" pt="x2" borderTopWidth={1} borderColor="stroke.neutralSubtle">
+          <HStack justify="space-between" align="center" gap="x2" wrap pt="x2" borderTopWidth={1} borderColor="stroke.neutralSubtle">
             <Text textStyle="t3Regular" color="fg.neutralSubtle">
               {`근거 발견 ${item.finding_ids.join(', ')}`}
             </Text>

@@ -35,7 +35,7 @@ export function ScoreTrend({ items, selectedScanId, onSelect }: ScoreTrendProps)
     <div style={{ width: '100%', overflowX: 'auto' }}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        style={{ width: '100%', minWidth: 480, height: 'auto', display: 'block' }}
+        style={{ width: '100%', minWidth: 360, height: 'auto', display: 'block' }}
         role="img"
         aria-label={`안전 점수 추이: ${items.map((it) => `${it.scan_id} ${it.safety_score}점`).join(', ')}`}
       >

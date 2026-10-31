@@ -10,7 +10,8 @@ import {
   IconHouseFill,
   IconPlusLine,
 } from '@karrotmarket/react-monochrome-icon'
-import { Box, HStack, Icon, Layout, Text, VStack, useSideNavigationContext } from '@seed-design/react'
+import { Box, HStack, Icon, Layout, Text, VStack, useBreakpointValue, useSideNavigationContext } from '@seed-design/react'
+import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Avatar } from 'seed-design/ui/avatar'
 import { Badge } from 'seed-design/ui/badge'
@@ -169,11 +170,18 @@ function Shell() {
   const { pathname } = useLocation()
   const { domain } = useDomain()
 
+  // 휴대폰 폭(768px 미만)에서는 메뉴를 아이콘만 남기고 접는다.
+  // 사용자가 직접 열고 닫으면 그 선택을 쓰되, 화면 폭 구간이 바뀌면 다시 폭 기준으로 돌아간다.
+  const narrow = useBreakpointValue({ base: true, md: false }) ?? false
+  const [choice, setChoice] = useState<{ narrow: boolean; collapsed: boolean } | null>(null)
+  const collapsed = choice?.narrow === narrow ? choice.collapsed : narrow
+  const setCollapsed = (value: boolean) => setChoice({ narrow, collapsed: value })
+
   // 도메인을 바꾸면 key가 바뀌어 점검 상태도 새로 시작한다.
   return (
     <ScanProvider key={domain.domain_id} domainId={domain.domain_id}>
     <Layout.Root>
-      <SideNavigationProvider>
+      <SideNavigationProvider collapsed={collapsed} onCollapsedChange={setCollapsed}>
         <SideNavigationRoot>
           <SideNavigationHeader>
             <HStack justify="space-between" align="center" width="full">
