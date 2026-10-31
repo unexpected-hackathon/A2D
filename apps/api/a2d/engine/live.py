@@ -325,7 +325,7 @@ class LiveEngine(Engine):
 
         # #2·#3 경로 찾기: 우리 서버마다 내부 링크를 끝까지 따라간다. 거기서 처음 보는 우리 호스트가 나오면
         # DNS로 확인해 자산에 넣고 그 호스트도 따라간다(더 나오지 않을 때까지).
-        site = Crawler(http, domain)
+        site = Crawler(http, domain, page_limit=self.s.crawl_page_limit)
         while True:
             primary = self._primary_host(list(found.values()), domain)
             targets = [h for h, a in sorted(found.items()) if a.role in CRAWL_ROLES and h not in site.maps
@@ -344,7 +344,7 @@ class LiveEngine(Engine):
                 ctx.audit("system", "crawl", {"host": host},
                           f"페이지 {len(hm.pages)}개·JS {len(hm.scripts)}개 확인, 경로 {len(hm.routes)}개 찾음"
                           f"(같은 틀이라 건너뜀 {hm.skipped_same_template}, 상태를 바꿀 수 있어 안 엶 "
-                          f"{hm.skipped_unsafe})")
+                          f"{hm.skipped_unsafe}, 페이지 상한으로 건너뜀 {hm.skipped_page_limit})")
 
         # 찾은 모든 화면·JS에 적힌 클라우드 저장소(#14)와 백엔드 대행 서비스(#34). 이름을 추측하지 않는다
         cloud_hosts: set[str] = set()

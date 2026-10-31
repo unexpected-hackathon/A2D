@@ -65,6 +65,8 @@ class Settings:
     request_limit: int = 0  # 점검 1회의 요청 상한. 0이면 없다(호스트당 초당 2건은 그대로 지킨다)
     tool_call_limit: int = 20
     time_limit_sec: int = 1800
+    # 크롤링에서 호스트당 여는 페이지 수 상한. 0이면 없다(같은 주소·같은 틀의 페이지만 건너뛴다)
+    crawl_page_limit: int = 0
 
     # LLM(강현 님 GPU 서버의 vLLM, OpenAI 호환). 비어 있으면 llm=down, 기본 가이드로 동작한다
     llm_base_url: str = ""
@@ -88,6 +90,7 @@ class Settings:
             request_limit=_int("A2D_REQUEST_LIMIT", 0),
             tool_call_limit=_int("A2D_TOOL_CALL_LIMIT", 20),
             time_limit_sec=_int("A2D_TIME_LIMIT_SEC", 1800),
+            crawl_page_limit=_int("A2D_CRAWL_PAGE_LIMIT", 0),
             llm_base_url=os.environ.get("A2D_LLM_BASE_URL", "").rstrip("/"),
             llm_api_key=os.environ.get("A2D_LLM_API_KEY", ""),
             llm_model=os.environ.get("A2D_LLM_MODEL", "qwen3-8b"),

@@ -101,14 +101,22 @@ def _today() -> dt.date:
 
 
 async def _get_json(http, url: str, headers: dict[str, str] | None = None, *,
-                    timeout: float = LOOKUP_TIMEOUT, max_bytes: int = BIG_BODY):
-    """GET 후 200이면 JSON을 돌려준다. 그 밖에는 None. 리다이렉트는 몇 번까지 따라간다."""
-    for _ in range(RDAP_MAX_REDIRECTS + 1):
+                    timeout: float = LOOKUP_TIMEOUT, max_bytes: int = BIG_BODY, redirects: int = 0):
+    """GET 후 200이면 JSON을 돌려준다. 그 밖에는 None.
+
+    리다이렉트는 redirects번까지만, https 주소로만 따라간다. RDAP(rdap.kr → rdap.nic.or.kr)만 쓰고,
+    NVD·KEV·endoflife.date는 따라가지 않는다(공개 자료 쪽의 열린 리다이렉트로 다른 곳에 나가지 않게).
+    """
+    for _ in range(redirects + 1):
         r = await http.get(url, headers, timeout=timeout, max_bytes=max_bytes)
         if r is None:
             return None
         if r.status in _REDIRECTS and getattr(r, "location", None):
-            url = urljoin(url, r.location)
+            nxt = urljoin(url, r.location)
+            if redirects == 0 or not nxt.startswith("https://"):
+                log.info("공개 자료 리다이렉트를 따라가지 않음 %s → %s", url, nxt)
+                return None
+            url = nxt
             continue
         if r.status != 200:
             log.info("공개 자료 조회 실패 %s: HTTP %s", url, r.status)
@@ -369,7 +377,8 @@ async def _domain_registration(http, domain: str) -> dict | None:
         log.info("RDAP 서버를 모름 %s", name)
         return None
     data = await _get_json(http, f"{base.rstrip('/')}/domain/{name}",
-                           {"Accept": "application/rdap+json"}, timeout=10.0, max_bytes=1024 * 1024)
+                           {"Accept": "application/rdap+json"}, timeout=10.0, max_bytes=1024 * 1024,
+                           redirects=RDAP_MAX_REDIRECTS)
     if not isinstance(data, dict):
         return None
     return {"expires": _rdap_expiry(data.get("events")), "transfer_locked": _rdap_locked(data.get("status"))}

@@ -418,3 +418,20 @@ def test_rdap_idn_uses_punycode():
     http = FakeHttp({**RDAP_ROUTES, "https://rdap.nic.or.kr/domain/xn--": RDAP_NAVER})
     assert run(intel.domain_registration(http, "예시.한국")) is not None
     assert http.urls()[-1].startswith("https://rdap.nic.or.kr/domain/xn--")
+
+
+def test_rdap_does_not_follow_redirect_to_http():
+    http = FakeHttp({**RDAP_ROUTES,
+                     "https://rdap.verisign.com/com/v1/domain/moved.com":
+                         resp("https://rdap.verisign.com/com/v1/domain/moved.com", "", 307,
+                              location="http://rdap.example.net/domain/moved.com"),
+                     "http://rdap.example.net/domain/moved.com": RDAP_NAVER})
+    assert run(intel.domain_registration(http, "moved.com")) is None
+
+
+def test_lookups_other_than_rdap_do_not_follow_redirects():
+    """NVD·KEV·endoflife.date의 리다이렉트는 따라가지 않는다(공개 자료 쪽 열린 리다이렉트로 다른 곳에 나가지 않게)."""
+    http = FakeHttp({intel.KEV_URL: resp(intel.KEV_URL, "", 302, location="https://elsewhere.example/kev.json"),
+                     "https://elsewhere.example/kev.json": KEV})
+    assert run(intel.kev_catalog(http)) is None
+    assert not http.urls("https://elsewhere.example")

@@ -22,6 +22,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlsplit, parse_qsl
 
+from .base import ScanStopped
 from .net import Fetched, HttpClient
 
 log = logging.getLogger("a2d.engine.crawl")
@@ -59,6 +60,9 @@ _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 _HEX = re.compile(r"[0-9a-f]{12,}", re.I)
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+){3,}", re.I)  # my-first-blog-post 같은 글 주소
 _LONG = re.compile(r".{40,}")
+# 민감해 보이는 이름이 든 칸은 같은 틀로 묶지 않는다(/admin-panel-secret-config 같은 경로를 놓치지 않게)
+_SENSITIVE_SEG = re.compile(r"admin|adm|manage|config|secret|private|internal|backup|dump|export|debug|test|dev"
+                            r"|staging|env|token|key|password|passwd|login|auth|api|graphql|upload|file|db|sql", re.I)
 
 
 @dataclass
@@ -69,6 +73,8 @@ class HostMap:
     routes: dict[str, None] = field(default_factory=dict)      # 찾은 모든 경로(열지 않은 것 포함)
     skipped_same_template: int = 0
     skipped_unsafe: int = 0
+    skipped_page_limit: int = 0
+    opened_pages: int = 0
 
     def html_pages(self) -> list[tuple[str, Fetched]]:
         return [(p, r) for p, r in self.pages.items() if _is_html(r)]
@@ -82,8 +88,8 @@ def template_key(path_and_query: str) -> str:
     parts = urlsplit(path_and_query)
     segs = []
     for s in parts.path.split("/"):
-        if s and (_NUM.fullmatch(s) or _UUID.fullmatch(s) or _HEX.fullmatch(s) or _SLUG.fullmatch(s)
-                  or _LONG.fullmatch(s) or "%" in s):
+        if s and (_NUM.fullmatch(s) or _UUID.fullmatch(s) or _HEX.fullmatch(s)
+                  or ((_SLUG.fullmatch(s) or _LONG.fullmatch(s) or "%" in s) and not _SENSITIVE_SEG.search(s))):
             segs.append("{x}")
         else:
             segs.append(s)
@@ -102,16 +108,17 @@ def _is_html(r: Fetched) -> bool:
 class Crawler:
     """호스트별 대기열을 따로 두고, 서로 다른 호스트는 동시에 돈다(호스트별 속도 제한은 HttpClient가 지킨다)."""
 
-    def __init__(self, http: HttpClient, domain: str):
+    def __init__(self, http: HttpClient, domain: str, page_limit: int = 0):
         self.http = http
         self.domain = domain
+        self.page_limit = page_limit  # 호스트당 여는 페이지 수 상한. 0이면 없음(A2D_CRAWL_PAGE_LIMIT)
         self.maps: dict[str, HostMap] = {}
         self.new_hosts: set[str] = set()
         self._queues: dict[str, deque[tuple[str, str]]] = {}
         self._seen: set[str] = set()                 # 대기열에 넣은 URL(종류 포함)
         self._templates: dict[str, int] = {}         # 호스트+틀 → 연 개수
         self.api_hosts: set[str] = set()             # 상대 API 경로를 같이 넣어 볼 API 서버
-        self._pending: dict[str, list[tuple[str, str]]] = {}  # 아직 자산이 아닌 우리 호스트로 가는 링크
+        self._pending: dict[str, list[tuple[str, str, bool]]] = {}  # 아직 자산이 아닌 우리 호스트로 가는 링크
 
     # ------------------------------------------------------------ 바깥에서 부르는 것
     async def crawl(self, hosts: list[str], extra_seeds: dict[str, list[str]] | None = None) -> None:
@@ -126,16 +133,25 @@ class Crawler:
             self._enqueue(f"https://{h}/sitemap.xml", "sitemap")
             for p in (extra_seeds or {}).get(h, []):
                 self._enqueue(f"https://{h}{p}", "page")
-            for url, kind in self._pending.pop(h, []):  # 자산이 되기 전에 본 링크
-                self._enqueue(url, kind)
+            for url, kind, force in self._pending.pop(h, []):  # 자산이 되기 전에 본 링크
+                self._enqueue(url, kind, force=force)
         while any(self._queues.values()):
-            await asyncio.gather(*(self._drain(h) for h, q in list(self._queues.items()) if q))
+            tasks = [asyncio.ensure_future(self._drain(h)) for h, q in list(self._queues.items()) if q]
+            try:
+                await asyncio.gather(*tasks)
+            except BaseException:
+                # 중지 요청·제한 시간(ScanStopped)이면 다른 호스트의 크롤링도 바로 멈추고 엔진까지 올려 보낸다
+                for t in tasks:
+                    t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
 
     def in_scope(self, host: str) -> bool:
         return host in self.maps
 
     # ------------------------------------------------------------ 대기열
-    def _enqueue(self, url: str, kind: str, *, record_from: str | None = None) -> None:
+    def _enqueue(self, url: str, kind: str, *, force: bool = False) -> None:
+        """force: robots·사이트맵처럼 운영자가 직접 적은 경로. 같은 틀이어도 연다(같은 주소만 건너뛴다)."""
         url = url.split("#", 1)[0]
         try:
             parts = urlsplit(url)
@@ -148,8 +164,8 @@ class Crawler:
             if host == self.domain or host.endswith("." + self.domain):
                 self.new_hosts.add(host)
                 pend = self._pending.setdefault(host, [])
-                if (url, kind) not in pend:
-                    pend.append((url, kind))
+                if (url, kind, force) not in pend:
+                    pend.append((url, kind, force))
             return
         path = parts.path or "/"
         pq = path + ("?" + parts.query if parts.query else "")
@@ -169,11 +185,15 @@ class Crawler:
         if key in self._seen:
             return
         if kind == "page":
+            if self.page_limit and hm.opened_pages >= self.page_limit:
+                hm.skipped_page_limit += 1
+                return
             tkey = host + template_key(pq)
-            if self._templates.get(tkey, 0) >= TEMPLATE_SAMPLES:
+            if not force and self._templates.get(tkey, 0) >= TEMPLATE_SAMPLES:
                 hm.skipped_same_template += 1
                 return
             self._templates[tkey] = self._templates.get(tkey, 0) + 1
+            hm.opened_pages += 1
         self._seen.add(key)
         self._queues[host].append((kind, f"https://{host}{pq}"))
 
@@ -183,6 +203,8 @@ class Crawler:
             kind, url = q.popleft()
             try:
                 await self._visit(host, kind, url)
+            except ScanStopped:
+                raise  # 중지 버튼·제한 시간은 삼키지 않는다
             except Exception:  # 한 페이지의 이상한 응답이 크롤링 전체를 멈추지 않게 한다
                 log.exception("크롤링 실패 %s", url)
 
@@ -204,7 +226,7 @@ class Crawler:
             for p in _ROBOTS_PATH.findall(r.text):
                 p = p.replace("*", "").rstrip("$")
                 if p and p != "/":
-                    self._enqueue(f"https://{host}{p}", "page")
+                    self._enqueue(f"https://{host}{p}", "page", force=True)
             for sm in _ROBOTS_SITEMAP.findall(r.text):
                 self._enqueue(urljoin(url, sm), "sitemap")
             return
@@ -214,7 +236,7 @@ class Crawler:
                 return
             nested = "<sitemapindex" in r.text[:2000].lower()
             for loc in _SITEMAP_LOC.findall(r.text):
-                self._enqueue(urljoin(url, loc), "sitemap" if nested or loc.endswith(".xml") else "page")
+                self._enqueue(urljoin(url, loc), "sitemap" if nested or loc.endswith(".xml") else "page", force=True)
             return
 
         r = await self.http.get_cached(url)

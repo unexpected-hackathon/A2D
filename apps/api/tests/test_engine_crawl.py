@@ -220,3 +220,59 @@ def test_pii_api_found_deep_is_reported_with_count():
     _, findings, _ = scan(site)
     f = next(f for f in findings if f.check_id == 16)
     assert "/api/students" in f.location and "외 1곳" in f.evidence and "a@example.com" not in f.evidence
+
+
+def test_stop_during_crawl_stops_the_scan():
+    """크롤링 중 중지 요청(제한 시간도 같다)이 들어오면 점검이 ScanStopped로 멈추고 더 요청하지 않는다(리뷰 반영)."""
+    import pytest
+    from a2d.engine.base import ScanStopped
+
+    budget = Budget(0, 20, 300)
+    links = "".join(f'<a href="/learn/{i}">{i}</a>' for i in "abcdefghij")
+    site = FakeSite({(WWW, "/"): html(links), (WWW, "/learn/a"): html("a")})
+    inner = site.__call__
+
+    def stop_on_learn(request):
+        if request.url.path == "/learn/a":
+            budget.stop_requested = True
+        return inner(request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(stop_on_learn))
+    engine = LiveEngine(Settings(), dns=SiteDns((DOMAIN, WWW)), tls=SafeTls(), client=client, host_min_interval=0)
+    ctx = EngineContext("S-1", DOMAIN, 1, budget, lambda *a: None, lambda a: "A-1", lambda f: ("F-1", "A-1"),
+                        lambda *a, **k: None)
+    with pytest.raises(ScanStopped):
+        asyncio.run(engine.run(ctx))
+    asyncio.run(client.aclose())
+    opened = site.opened()
+    assert "/learn/a" in opened and not ({f"/learn/{c}" for c in "bcdefghij"} <= opened)
+
+
+def test_optional_page_limit_per_host():
+    links = "".join(f'<a href="/page-{c}">{c}</a>' for c in "abcdefghijklmnopqrst")
+    site = FakeSite({(WWW, "/"): html(links)})
+    client = httpx.AsyncClient(transport=httpx.MockTransport(site))
+    engine = LiveEngine(Settings(crawl_page_limit=5), dns=SiteDns((DOMAIN, WWW)), tls=SafeTls(), client=client,
+                        host_min_interval=0)
+    audit = []
+    ctx = EngineContext("S-1", DOMAIN, 1, Budget(0, 20, 300), lambda *a: None, lambda a: "A-1",
+                        lambda f: ("F-1", "A-1"), lambda *a, **k: audit.append(a))
+    asyncio.run(engine.run(ctx))
+    asyncio.run(client.aclose())
+    assert len([p for p in site.opened() if p.startswith("/page-")]) <= 4  # "/" 포함 5장
+    import re
+    skipped = [int(m.group(1)) for a in audit if a[1] == "crawl"
+               for m in [re.search(r"페이지 상한으로 건너뜀 (\d+)", a[3] or "")] if m]
+    assert skipped and skipped[0] >= 15
+
+
+def test_sensitive_slugs_are_not_grouped():
+    assert template_key("/admin-panel-secret-config") != template_key("/my-first-blog-post")
+    assert template_key("/internal-reports-export-v2") == "/internal-reports-export-v2"
+
+
+def test_paths_listed_in_robots_are_opened_even_if_same_template():
+    robots = "User-agent: *\n" + "".join(f"Disallow: /private/{i}\n" for i in range(1, 8))
+    site = FakeSite({(WWW, "/robots.txt"): (200, robots, "text/plain"), (WWW, "/"): html("홈")})
+    scan(site)
+    assert {f"/private/{i}" for i in range(1, 8)} <= site.opened()
