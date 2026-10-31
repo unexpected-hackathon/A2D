@@ -100,7 +100,7 @@ docs(docs): PRD에 재점검 흐름 추가
 ## 4. Pull Request
 
 - **제목**은 squash 커밋 메시지가 되므로 커밋 규칙과 같은 형식으로 쓴다.
-- **본문**은 [PR 템플릿](.github/pull_request_template.md)을 채우고, 해당 없는 절은 지운다. 관련 기능 번호(FR-xx, C-xx)를 적는다.
+- **본문**은 [PR 템플릿](.github/pull_request_template.md)을 채운다. 관련 기능 번호(FR-xx, C-xx)가 있으면 적는다.
 - 이슈를 해결하는 PR은 본문에 `Closes #이슈번호`를 적는다. 머지되면 이슈가 자동으로 닫힌다.
 - 화면을 바꿨으면 스크린샷을 붙인다.
 - PR은 작게 연다. 하루 넘게 열려 있는 PR은 나눈다.
