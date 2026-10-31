@@ -5,6 +5,7 @@ import { Box, type BoxProps } from '@seed-design/react'
 export function Surface(props: BoxProps) {
   return (
     <Box
+      className="a2d-min0"
       bg="bg.layerDefault"
       borderRadius="r4"
       borderWidth={1}

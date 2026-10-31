@@ -11,10 +11,14 @@ afterEach(() => {
 })
 
 // 모션 라이브러리와 SEED가 화면 크기·움직임 줄이기 설정을 물을 때 쓴다.
+// 화면 폭 질문(min-width)은 jsdom의 창 폭(기본 1024px, 노트북)으로 답한다.
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
-    matches: false,
+    matches: (() => {
+      const min = /min-width:\s*(\d+)px/.exec(query)
+      return min ? window.innerWidth >= Number(min[1]) : false
+    })(),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -31,5 +35,16 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver
+
+// 칩 탭 가로 스크롤(ChipTabsCarousel)이 쓴다.
+class IntersectionObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return []
+  }
+}
+globalThis.IntersectionObserver ??= IntersectionObserverStub as unknown as typeof IntersectionObserver
 
 Element.prototype.scrollIntoView ??= vi.fn()

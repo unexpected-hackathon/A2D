@@ -4,17 +4,11 @@
 
 import { motion, useReducedMotion } from 'motion/react'
 import type { HistoryItem } from '../api/types'
+import { GRADE_BANDS, gradeStyle } from '../theme/severity'
 
 const W = 720
 const H = 260
 const PAD = { top: 16, right: 24, bottom: 36, left: 40 }
-const BANDS = [
-  { grade: 'A', from: 90, to: 100, color: 'var(--seed-color-bg-positive-weak)' },
-  { grade: 'B', from: 72, to: 90, color: 'var(--seed-color-bg-positive-weak)' },
-  { grade: 'C', from: 58, to: 72, color: 'var(--seed-color-bg-informative-weak)' },
-  { grade: 'D', from: 44, to: 58, color: 'var(--seed-color-bg-warning-weak)' },
-  { grade: 'F', from: 0, to: 44, color: 'var(--seed-color-bg-critical-weak)' },
-]
 
 interface ScoreTrendProps {
   items: HistoryItem[]
@@ -35,14 +29,14 @@ export function ScoreTrend({ items, selectedScanId, onSelect }: ScoreTrendProps)
     <div style={{ width: '100%', overflowX: 'auto' }}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        style={{ width: '100%', minWidth: 480, height: 'auto', display: 'block' }}
+        style={{ width: '100%', minWidth: 360, height: 'auto', display: 'block' }}
         role="img"
         aria-label={`안전 점수 추이: ${items.map((it) => `${it.scan_id} ${it.safety_score}점`).join(', ')}`}
       >
         {/* 등급 구간 띠와 왼쪽 등급 글자 */}
-        {BANDS.map((b) => (
+        {GRADE_BANDS.map((b) => (
           <g key={b.grade}>
-            <rect x={PAD.left} y={y(b.to)} width={innerW} height={y(b.from) - y(b.to)} fill={b.color} opacity={0.6} />
+            <rect x={PAD.left} y={y(b.to)} width={innerW} height={y(b.from) - y(b.to)} fill={`var(--seed-color-bg-${gradeStyle[b.grade].tone}-weak)`} opacity={0.6} />
             <text x={PAD.left - 10} y={(y(b.to) + y(b.from)) / 2 + 4} textAnchor="end" fontSize="12" fontWeight="700" fill="var(--seed-color-fg-neutral-subtle)">
               {b.grade}
             </text>

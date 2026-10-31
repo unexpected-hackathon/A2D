@@ -4,39 +4,35 @@
 //   1) GET /domains/{id}/history → 점수 추이 그래프(4-1)와 점검 목록(4-2)
 //   2) 점검을 고르면(기본: 가장 최근) GET /scans/{id}/changes(4-3), GET /scans/{id}/audit(4-4)
 //   3) 재점검이 끝나면(useScan().finishedVersion) 1)을 다시 부르고 새 점검을 고른다
-//   4) "한 장 요약 내보내기"(4-5) → /export 인쇄용 화면
+//   4) "요약 내보내기"(4-5) → 모달(ExportDialog)에서 인쇄
 
-import { IconDocumentArrowLeftLine } from '@karrotmarket/react-monochrome-icon'
-import { Grid, HStack, PrefixIcon, Skeleton, Text, VStack } from '@seed-design/react'
+import { HStack, Skeleton, Text, VStack } from '@seed-design/react'
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
-import { ActionButton } from 'seed-design/ui/action-button'
 import { Badge } from 'seed-design/ui/badge'
 import { Callout } from 'seed-design/ui/callout'
 import { ResultSection } from 'seed-design/ui/result-section'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'seed-design/ui/tabs'
-import { getCurrentDomainId } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import { AuditLog } from '../components/AuditLog'
+import { ExportDialog } from '../components/ExportDialog'
 import { GradeBadge } from '../components/Badges'
 import { PageHeader } from '../components/PageHeader'
 import { ScanChanges } from '../components/ScanChanges'
 import { ScoreTrend } from '../components/ScoreTrend'
 import { Surface } from '../components/Surface'
 import { useApi } from '../hooks/useApi'
+import { useDomain } from '../hooks/useDomain'
 import { useCheckName } from '../hooks/useChecks'
 import { useScan } from '../hooks/useScan'
 import { formatDateTime } from '../lib/format'
 import { FindingPanel } from '../panels/FindingPanel'
 
 export function HistoryPage() {
-  const domainId = getCurrentDomainId()
-  if (!domainId) return <Navigate to="/register" replace />
-  return <History domainId={domainId} />
+  const { domain } = useDomain()
+  return <History domainId={domain.domain_id} />
 }
 
 function History({ domainId }: { domainId: string }) {
-  const navigate = useNavigate()
   const scan = useScan()
   const history = useApi(() => api.domains.history(domainId), [domainId, scan.finishedVersion])
   const items = history.data?.items ?? []
@@ -53,12 +49,7 @@ function History({ domainId }: { domainId: string }) {
       <PageHeader
         eyebrow="기록"
         title="점검할수록 안전해지는 기록"
-        description="재점검마다 안전 점수가 어떻게 바뀌었는지, 무엇을 고쳤는지 확인합니다."
-        actions={
-          <ActionButton variant="neutralWeak" onClick={() => navigate('/export')}>
-            <PrefixIcon svg={<IconDocumentArrowLeftLine />} />한 장 요약 내보내기
-          </ActionButton>
-        }
+        actions={<ExportDialog domainId={domainId} />}
       />
 
       {history.error && <Callout tone="critical" description={history.error.message} />}
@@ -75,7 +66,7 @@ function History({ domainId }: { domainId: string }) {
           {/* 4-1 점수 추이 */}
           <Surface>
             <VStack gap="x3">
-              <HStack justify="space-between" align="flex-end">
+              <HStack justify="space-between" align="flex-end" gap="x2" wrap>
                 <Text textStyle="t5Bold" color="fg.neutral">
                   안전 점수 추이
                 </Text>
@@ -87,7 +78,7 @@ function History({ domainId }: { domainId: string }) {
             </VStack>
           </Surface>
 
-          <Grid columns={{ base: 1, lg: '1fr 2fr' }} gap="x5" alignItems="flex-start">
+          <div className="a2d-grid a2d-grid--side">
             {/* 4-2 점검 목록 (최근 것이 위) */}
             <Surface p="x0">
               <VStack>
@@ -154,7 +145,7 @@ function History({ domainId }: { domainId: string }) {
                 </TabsRoot>
               </Surface>
             )}
-          </Grid>
+          </div>
         </>
       )}
 

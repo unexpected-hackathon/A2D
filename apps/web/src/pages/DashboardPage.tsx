@@ -9,13 +9,11 @@
 //   6) 새 노출 알림(2-4): summary.alerts
 
 import { IconBellFill } from '@karrotmarket/react-monochrome-icon'
-import { Grid, Skeleton, VStack } from '@seed-design/react'
+import { Skeleton, VStack } from '@seed-design/react'
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import { Callout } from 'seed-design/ui/callout'
 import { ActionablePageBanner } from 'seed-design/ui/page-banner'
 import { ResultSection } from 'seed-design/ui/result-section'
-import { getCurrentDomainId } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import type { Asset } from '../api/types'
 import { AssetList } from '../components/AssetList'
@@ -25,14 +23,15 @@ import { ScoreCard } from '../components/ScoreCard'
 import { Surface } from '../components/Surface'
 import { TodayTasks } from '../components/TodayTasks'
 import { useApi } from '../hooks/useApi'
+import { useDomain } from '../hooks/useDomain'
 import { useScan } from '../hooks/useScan'
 import { AssetPanel } from '../panels/AssetPanel'
 import { FindingPanel } from '../panels/FindingPanel'
 
 export function DashboardPage() {
-  const domainId = getCurrentDomainId()
-  if (!domainId) return <Navigate to="/register" replace />
-  return <Dashboard domainId={domainId} />
+  // 도메인이 없으면 AppShell(DomainProvider)이 등록 화면으로 먼저 보낸다.
+  const { domain } = useDomain()
+  return <Dashboard domainId={domain.domain_id} />
 }
 
 function Dashboard({ domainId }: { domainId: string }) {
@@ -60,7 +59,6 @@ function Dashboard({ domainId }: { domainId: string }) {
       <PageHeader
         eyebrow={summary.data?.domain ?? '대시보드'}
         title="오늘의 외부 노출 상태"
-        description="안전 점수와 오늘 가장 먼저 고칠 3가지를 한눈에 봅니다."
       />
 
       {summary.error && (
@@ -102,23 +100,23 @@ function Dashboard({ domainId }: { domainId: string }) {
 
       {summary.data?.latest_scan && (
         <>
-          {/* 넓은 화면에서 점수 카드 : 오늘 할 일 = 2 : 3 */}
-          <Grid columns={{ base: 1, lg: '2fr 3fr' }} gap="x5">
+          {/* 1024px 이상에서 점수 카드 : 오늘 할 일 = 2 : 3 (global.css .a2d-grid) */}
+          <div className="a2d-grid a2d-grid--hero">
             <ScoreCard summary={summary.data} onRescan={() => void scan.start()} scanning={scan.isRunning} />
             <TodayTasks
               scanId={summary.data.latest_scan.scan_id}
               tasks={summary.data.today_tasks}
               currentScore={summary.data.safety_score}
             />
-          </Grid>
-          <Grid columns={{ base: 1, lg: 2 }} gap="x5" alignItems="flex-start">
+          </div>
+          <div className="a2d-grid a2d-grid--half" style={{ alignItems: 'start' }}>
             {assets.data ? <AssetList assets={assets.data.items} onSelect={setSelectedAsset} /> : <ListSkeleton />}
             {findings.data ? (
               <FindingList findings={findings.data.items} onSelect={setSelectedFindingId} />
             ) : (
               <ListSkeleton />
             )}
-          </Grid>
+          </div>
         </>
       )}
 
@@ -135,10 +133,10 @@ function Dashboard({ domainId }: { domainId: string }) {
 
 function DashboardSkeleton() {
   return (
-    <Grid columns={{ base: 1, lg: '2fr 3fr' }} gap="x5">
+    <div className="a2d-grid a2d-grid--hero">
       <Skeleton radius="16" height="300px" width="full" />
       <Skeleton radius="16" height="300px" width="full" />
-    </Grid>
+    </div>
   )
 }
 

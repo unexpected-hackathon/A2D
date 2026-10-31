@@ -14,10 +14,11 @@ import { Badge } from 'seed-design/ui/badge'
 import { Callout } from 'seed-design/ui/callout'
 import { TextField, TextFieldInput } from 'seed-design/ui/text-field'
 import { ApiError } from '../api/client'
-import { setCurrentDomainId } from '../api/currentDomain'
+import { setStoredDomainId } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import type { Domain } from '../api/types'
 import { Surface } from '../components/Surface'
+import { useApi } from '../hooks/useApi'
 import { AuthLayout } from '../layout/AuthLayout'
 
 type Step = 'input' | 'verify' | 'ready'
@@ -32,6 +33,10 @@ const errorText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.m
 export function RegisterPage() {
   const [step, setStep] = useState<Step>('input')
   const [domain, setDomain] = useState<Domain>()
+  const navigate = useNavigate()
+  // 이미 도메인이 있는 사용자가 "도메인 추가"로 들어왔으면 돌아갈 수 있게 한다.
+  const existing = useApi(() => api.domains.list(), [])
+  const hasDomains = (existing.data?.items.length ?? 0) > 0
 
   const stepIndex = STEPS.findIndex((s) => s.key === step)
 
@@ -47,9 +52,16 @@ export function RegisterPage() {
               </Badge>
             ))}
           </HStack>
-          <Text as="h1" textStyle="t9Bold" color="fg.neutral">
-            점검할 도메인 등록
-          </Text>
+          <HStack justify="space-between" align="center">
+            <Text as="h1" textStyle="t9Bold" color="fg.neutral">
+              점검할 도메인 등록
+            </Text>
+            {hasDomains && step !== 'ready' && (
+              <ActionButton variant="ghost" size="small" onClick={() => navigate('/dashboard')}>
+                돌아가기
+              </ActionButton>
+            )}
+          </HStack>
         </VStack>
 
         <Surface p="x6">
@@ -187,7 +199,7 @@ function StartScan({ domain }: { domain: Domain }) {
     setError(undefined)
     try {
       await api.scans.start(domain.domain_id)
-      setCurrentDomainId(domain.domain_id)
+      setStoredDomainId(domain.domain_id)
       navigate('/dashboard')
     } catch (err) {
       setError(errorText(err, '점검을 시작하지 못했습니다.'))

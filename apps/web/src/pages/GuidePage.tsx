@@ -7,7 +7,7 @@
 //   4) 대시보드의 오늘 할 일에서 왔으면 주소 끝 #task-N 카드로 스크롤하고 잠깐 강조한다
 //   5) 질문하기(3-3) → POST /scans/{scanId}/questions → 답과 근거 발견 링크
 
-import { IconCheckmarkShieldFill, IconClockLine } from '@karrotmarket/react-monochrome-icon'
+import { IconCheckmarkShieldFill, IconClockLine, IconExclamationmarkTriangleFill } from '@karrotmarket/react-monochrome-icon'
 import { HStack, Icon, Skeleton, Text, VStack } from '@seed-design/react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
@@ -18,12 +18,12 @@ import { Callout } from 'seed-design/ui/callout'
 import { ResultSection } from 'seed-design/ui/result-section'
 import { TextField, TextFieldTextarea } from 'seed-design/ui/text-field'
 import { ApiError } from '../api/client'
-import { getCurrentDomainId } from '../api/currentDomain'
 import { api } from '../api/endpoints'
 import type { Answer, GuideItem } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { Surface } from '../components/Surface'
 import { useApi } from '../hooks/useApi'
+import { useDomain } from '../hooks/useDomain'
 import { useScan } from '../hooks/useScan'
 import { formatDateTime, formatMinutes } from '../lib/format'
 import { FindingPanel } from '../panels/FindingPanel'
@@ -35,12 +35,8 @@ export function GuidePage() {
 
 // 1) 주소에 점검 ID가 없으면 최근 점검으로 보낸다.
 function LatestGuideRedirect() {
-  const domainId = getCurrentDomainId()
-  const { data, error } = useApi(
-    () => (domainId ? api.domains.summary(domainId) : Promise.reject(new ApiError(404, 'NO_DOMAIN', '등록된 도메인이 없습니다.'))),
-    [domainId],
-  )
-  if (!domainId) return <Navigate to="/register" replace />
+  const { domain } = useDomain()
+  const { data, error } = useApi(() => api.domains.summary(domain.domain_id), [domain.domain_id])
   if (error) return <Callout tone="critical" description={error.message} />
   if (!data) return <Skeleton radius="16" height="320px" width="full" />
   if (!data.latest_scan) {
@@ -58,6 +54,10 @@ function Guide({ scanId }: { scanId: string }) {
   const [findingId, setFindingId] = useState<string | null>(null)
   const { hash } = useLocation()
   const focusRank = Number(hash.replace('#task-', '')) || null
+  const allVerified =
+    !!guide.data &&
+    guide.data.verification.passed === guide.data.verification.total &&
+    guide.data.items.every((i) => i.verified)
 
   // 4) #task-N 카드로 스크롤
   useEffect(() => {
@@ -70,7 +70,6 @@ function Guide({ scanId }: { scanId: string }) {
       <PageHeader
         eyebrow="조치 가이드"
         title="오늘 할 일, 이렇게 고치세요"
-        description="항목마다 왜 위험한지, 어떤 피해가 날 수 있는지, 어떻게 고치는지 쉬운 말로 안내합니다."
       />
 
       {guide.error && <Callout tone={guide.error.code === 'SCAN_NOT_FINISHED' ? 'informative' : 'critical'} description={guide.error.message} />}
@@ -87,14 +86,20 @@ function Guide({ scanId }: { scanId: string }) {
           {/* 3-1 근거 검증 표시 */}
           <Surface py="x4">
             <HStack gap="x3" align="center" wrap>
-              <Icon svg={<IconCheckmarkShieldFill />} color="fg.positive" size="x6" />
+              <Icon
+                svg={allVerified ? <IconCheckmarkShieldFill /> : <IconExclamationmarkTriangleFill />}
+                color={allVerified ? 'fg.positive' : 'fg.warning'}
+                size="x6"
+              />
               <Text textStyle="t5Bold" color="fg.neutral">
                 {`근거 검증 통과 ${guide.data.verification.passed}/${guide.data.verification.total}`}
               </Text>
               <Text textStyle="t4Regular" color="fg.neutralMuted">
-                모든 문장이 실제 발견과 연결돼 있습니다.
+                {allVerified
+                  ? '모든 문장이 실제 발견과 연결돼 있습니다.'
+                  : `${guide.data.verification.total - guide.data.verification.passed}개 항목은 근거 확인이 끝나지 않았습니다. 기술 근거를 함께 확인해 주세요.`}
               </Text>
-              <HStack gap="x2" ml="auto" align="center">
+              <HStack gap="x2" ml="auto" align="center" wrap>
                 <Badge tone={guide.data.source === 'llm' ? 'brand' : 'neutral'} variant="weak" size="large">
                   {guide.data.source === 'llm' ? 'AI 설명' : '기본 가이드'}
                 </Badge>
@@ -210,10 +215,17 @@ function GuideCard({
                 {item.rank}
               </Text>
             </VStack>
-            <VStack gap="x1" grow>
-              <Text as="h2" textStyle="t7Bold" color="fg.neutral">
-                {item.title}
-              </Text>
+            <VStack gap="x1" grow className="a2d-min0">
+              <HStack gap="x2" align="center" wrap>
+                <Text as="h2" textStyle="t7Bold" color="fg.neutral">
+                  {item.title}
+                </Text>
+                {!item.verified && (
+                  <Badge tone="warning" variant="weak" size="medium">
+                    근거 확인 필요
+                  </Badge>
+                )}
+              </HStack>
               <HStack gap="x3" align="center" wrap>
                 <HStack gap="x1" align="center">
                   <Icon svg={<IconClockLine />} color="fg.neutralSubtle" size="x4" />
@@ -251,7 +263,7 @@ function GuideCard({
             </VStack>
           </VStack>
 
-          <HStack justify="space-between" align="center" pt="x2" borderTopWidth={1} borderColor="stroke.neutralSubtle">
+          <HStack justify="space-between" align="center" gap="x2" wrap pt="x2" borderTopWidth={1} borderColor="stroke.neutralSubtle">
             <Text textStyle="t3Regular" color="fg.neutralSubtle">
               {`근거 발견 ${item.finding_ids.join(', ')}`}
             </Text>

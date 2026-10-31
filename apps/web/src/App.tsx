@@ -7,7 +7,6 @@ import { UNAUTHENTICATED_EVENT } from './api/client'
 import { AppShell } from './layout/AppShell'
 import { DashboardPage } from './pages/DashboardPage'
 import { DevApiPage } from './pages/DevApiPage'
-import { ExportPage } from './pages/ExportPage'
 import { GuidePage } from './pages/GuidePage'
 import { HistoryPage } from './pages/HistoryPage'
 import { LoginPage } from './pages/LoginPage'
@@ -27,7 +26,6 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/export" element={<ExportPage />} />
       <Route element={<AppShell />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/guide" element={<GuidePage />} />

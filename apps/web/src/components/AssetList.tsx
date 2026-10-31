@@ -29,7 +29,7 @@ export function AssetList({ assets, onSelect }: AssetListProps) {
         {sorted.map((asset) => (
           <button key={asset.asset_id} type="button" onClick={() => onSelect(asset)} className="a2d-row">
             <HStack gap="x3" align="center" px="x5" py="x3">
-              <VStack gap="x0_5" grow>
+              <VStack gap="x0_5" grow className="a2d-min0">
                 <HStack gap="x2" align="center">
                   <Text textStyle="t4Bold" color="fg.neutral">
                     {asset.alias}
@@ -44,7 +44,7 @@ export function AssetList({ assets, onSelect }: AssetListProps) {
                   {asset.host}
                 </Text>
               </VStack>
-              <Badge tone="neutral" variant="outline" size="medium">
+              <Badge tone="neutral" variant="outline" size="medium" className="a2d-keep">
                 {`중요도 ${asset.importance.value}`}
               </Badge>
               {asset.max_severity ? (

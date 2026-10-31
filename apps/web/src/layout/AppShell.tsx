@@ -1,14 +1,17 @@
 // 로그인·등록을 뺀 모든 화면의 공통 틀 (정보 구조도 2장).
-// 왼쪽: SEED SideNavigation (로고, 메뉴 3개, 사용자 메뉴)
+// 왼쪽: SEED SideNavigation (로고, 점검 대상 도메인, 메뉴 3개, 사용자 메뉴)
 // 오른쪽: 맨 위 브랜드 줄 + 지금 주소의 화면(<Outlet />)
 
 import {
   IconArrowLeftBracketRightLine,
   IconCheckmarkShieldFill,
   IconClockFill,
+  IconChevronDownLine,
   IconHouseFill,
+  IconPlusLine,
 } from '@karrotmarket/react-monochrome-icon'
-import { Box, HStack, Layout, Text, VStack, useSideNavigationContext } from '@seed-design/react'
+import { Box, HStack, Icon, Layout, Text, VStack, useBreakpointValue, useSideNavigationContext } from '@seed-design/react'
+import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Avatar } from 'seed-design/ui/avatar'
 import { Badge } from 'seed-design/ui/badge'
@@ -25,11 +28,12 @@ import {
   SideNavigationTrigger,
 } from 'seed-design/ui/side-navigation'
 import { api } from '../api/endpoints'
-import { getCurrentDomainId } from '../api/currentDomain'
 import { useApi } from '../hooks/useApi'
 import logoUrl from '../assets/a2d-logo.svg'
 import iconUrl from '../assets/a2d-icon.svg'
+import { DomainProvider } from '../hooks/DomainProvider'
 import { ScanProvider } from '../hooks/ScanProvider'
+import { useDomain } from '../hooks/useDomain'
 import { PageTransition } from './PageTransition'
 import { ScanBanner } from './ScanBanner'
 
@@ -52,28 +56,65 @@ function Brand() {
   )
 }
 
+// 점검 대상 카드. 누르면 다른 도메인으로 바꾸거나 새 도메인을 추가할 수 있다.
 function DomainChip() {
   const { collapsed } = useSideNavigationContext()
-  const domainId = getCurrentDomainId()
-  const { data } = useApi(() => (domainId ? api.domains.get(domainId) : Promise.resolve(undefined)), [domainId])
-  if (collapsed || !data) return null
+  const { domain, domains, select } = useDomain()
+  const navigate = useNavigate()
+  if (collapsed) return null
   return (
     <Box px="x2" pb="x2">
-      <VStack gap="x1" p="x3" borderRadius="r3" bg="bg.neutralWeak">
-        <Text textStyle="t2Medium" color="fg.neutralSubtle">
-          점검 대상
-        </Text>
-        <HStack gap="x1_5" align="center" justify="space-between">
-          <Text textStyle="t4Bold" color="fg.neutral" maxLines={1}>
-            {data.domain}
-          </Text>
-          {data.verify_status === 'verified' && (
-            <Badge tone="positive" variant="weak" size="medium">
-              확인됨
-            </Badge>
+      <MenuRoot>
+        <MenuTrigger asChild>
+          <VStack
+            as="button"
+            gap="x1"
+            p="x3"
+            borderRadius="r3"
+            bg="bg.neutralWeak"
+            width="full"
+            aria-label={`점검 대상 ${domain.domain}, 바꾸거나 추가하기`}
+            style={{ border: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}
+          >
+            <HStack justify="space-between" align="center">
+              <Text textStyle="t2Medium" color="fg.neutralSubtle">
+                점검 대상
+              </Text>
+              <Icon svg={<IconChevronDownLine />} size="x3_5" color="fg.neutralSubtle" />
+            </HStack>
+            <HStack gap="x1_5" align="center" justify="space-between">
+              <Text textStyle="t4Bold" color="fg.neutral" maxLines={1}>
+                {domain.domain}
+              </Text>
+              {domain.verify_status === 'verified' && (
+                <Badge tone="positive" variant="weak" size="medium">
+                  확인됨
+                </Badge>
+              )}
+            </HStack>
+          </VStack>
+        </MenuTrigger>
+        <MenuContent>
+          {domains.length > 1 && (
+            <MenuGroup>
+              {domains.map((d) => (
+                <MenuItem
+                  key={d.domain_id}
+                  label={d.domain_id === domain.domain_id ? `${d.domain} (지금)` : d.domain}
+                  disabled={d.domain_id === domain.domain_id}
+                  onClick={() => {
+                    select(d.domain_id)
+                    navigate('/dashboard')
+                  }}
+                />
+              ))}
+            </MenuGroup>
           )}
-        </HStack>
-      </VStack>
+          <MenuGroup>
+            <MenuItem label="도메인 추가" prefixIcon={<IconPlusLine />} onClick={() => navigate('/register')} />
+          </MenuGroup>
+        </MenuContent>
+      </MenuRoot>
     </Box>
   )
 }
@@ -114,15 +155,33 @@ function UserMenu() {
   )
 }
 
+// 현재 도메인을 먼저 정하고(DomainProvider), 그 도메인의 점검 상태를 나눠 쓴다(ScanProvider).
+// 도메인이 없으면 DomainProvider가 등록 화면으로 보낸다.
 export function AppShell() {
+  return (
+    <DomainProvider>
+      <Shell />
+    </DomainProvider>
+  )
+}
+
+function Shell() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const { domain } = useDomain()
 
-  // 점검 상태는 여기서 한 번만 관리하고, 진행 띠와 화면들이 useScan()으로 나눠 쓴다.
+  // 휴대폰 폭(768px 미만)에서는 메뉴를 아이콘만 남기고 접는다.
+  // 사용자가 직접 열고 닫으면 그 선택을 쓰되, 화면 폭 구간이 바뀌면 다시 폭 기준으로 돌아간다.
+  const narrow = useBreakpointValue({ base: true, md: false }) ?? false
+  const [choice, setChoice] = useState<{ narrow: boolean; collapsed: boolean } | null>(null)
+  const collapsed = choice?.narrow === narrow ? choice.collapsed : narrow
+  const setCollapsed = (value: boolean) => setChoice({ narrow, collapsed: value })
+
+  // 도메인을 바꾸면 key가 바뀌어 점검 상태도 새로 시작한다.
   return (
-    <ScanProvider domainId={getCurrentDomainId()}>
+    <ScanProvider key={domain.domain_id} domainId={domain.domain_id}>
     <Layout.Root>
-      <SideNavigationProvider>
+      <SideNavigationProvider collapsed={collapsed} onCollapsedChange={setCollapsed}>
         <SideNavigationRoot>
           <SideNavigationHeader>
             <HStack justify="space-between" align="center" width="full">
