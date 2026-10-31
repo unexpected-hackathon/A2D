@@ -1,0 +1,24 @@
+/*
+ * SEED 브랜드 색 덮어쓰기.
+ * SEED의 기본 브랜드 색은 당근 주황이라 그대로 두면 당근 서비스처럼 보인다(NOTICE의 상표 안내).
+ * 브랜드 역할 토큰 8개만 A2D Defense 청록으로 바꾼다. 다른 토큰은 SEED 그대로 쓴다.
+ * 공식 테마 옵션이 아니므로 @seed-design/css 버전을 올릴 때 토큰 이름이 그대로인지 확인한다.
+ */
+:root,
+:root[data-seed-color-mode="light-only"],
+:root [data-seed-color-mode="light-only"] {
+  --seed-color-bg-brand-solid: #0e8c73;
+  --seed-color-bg-brand-solid-pressed: #0b7360;
+  --seed-color-bg-brand-weak: #e3f4f0;
+  --seed-color-bg-brand-weak-pressed: #cbeae3;
+  --seed-color-fg-brand: #0b7a64;
+  /* 옅은 브랜드 배경(배지 등) 위의 진한 글자색. 흰색이 아니다. */
+  --seed-color-fg-brand-contrast: #075e4e;
+  --seed-color-stroke-brand-solid: #0e8c73;
+  --seed-color-stroke-brand-weak: #a9ddd1;
+
+  /* A2D 로고 색. 로고·포인트에만 쓴다. */
+  --a2d-attack: #e8590c;
+  --a2d-defense: #0e8c73;
+  --a2d-navy: #10202f;
+}

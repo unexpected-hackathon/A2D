@@ -1,0 +1,125 @@
+/* 앱 전체에 한 번 적용하는 기본 스타일과 모션. */
+
+body {
+  margin: 0;
+  /* SEED 권장 글꼴 스택. Pretendard는 main.tsx에서 프로젝트 안의 파일로 불러온다(오프라인 시연). */
+  font-family: var(--seed-font-family);
+  background: var(--seed-color-bg-layer-basement);
+  color: var(--seed-color-fg-neutral);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* 화면이 바뀔 때 아래에서 살짝 떠오르는 모션 (layout/PageTransition.tsx) */
+@keyframes a2d-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 브랜드 줄(주황 → 남색 → 청록)이 흘러가는 모션. 점검이 도는 동안 쓴다. */
+@keyframes a2d-flow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+.a2d-flow-line {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--a2d-attack),
+    var(--a2d-navy),
+    var(--a2d-defense),
+    var(--a2d-navy),
+    var(--a2d-attack)
+  );
+  background-size: 200% 100%;
+}
+
+.a2d-flow-line[data-running="true"] {
+  animation: a2d-flow 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 목록의 한 줄(누르면 패널이 열리는 행). 마우스를 올리면 살짝 밝아진다. */
+.a2d-row {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  border-top: 1px solid var(--seed-color-stroke-neutral-subtle);
+  transition: background-color 0.15s ease;
+}
+.a2d-row:hover {
+  background: var(--seed-color-bg-neutral-weak);
+}
+.a2d-row:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-brand-solid);
+  outline-offset: -2px;
+}
+
+/* 오늘 할 일 한 줄(누르면 조치 가이드로 이동). 모션 값과 겹치지 않게 필요한 것만 초기화한다. */
+.a2d-task {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 14px;
+  border: 1px solid var(--seed-color-stroke-neutral-subtle);
+  background: var(--seed-color-bg-layer-default);
+  padding: 14px 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.a2d-task:hover {
+  border-color: var(--seed-color-stroke-brand-weak);
+  box-shadow: 0 4px 14px rgb(16 32 47 / 0.06);
+}
+.a2d-task:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-brand-solid);
+  outline-offset: 2px;
+}
+
+/* 한 장 요약(/export) 인쇄: 버튼을 숨기고 A4 한 장에 맞춘다. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  body {
+    background: #fff;
+  }
+  .a2d-no-print {
+    display: none !important;
+  }
+  .a2d-page {
+    box-shadow: none !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}
