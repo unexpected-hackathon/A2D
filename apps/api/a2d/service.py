@@ -51,6 +51,7 @@ STAGE_NAMES = {
     "failed": "실패",
 }
 SEVERITIES = ("critical", "high", "medium", "low", "info")
+REPORT_TIMEOUT_SEC = 150  # 조치 가이드 LLM 생성 전체 상한. 넘으면 기본 가이드로 나간다
 VERIFY_LABEL = "_a2d-verify"
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 
@@ -595,8 +596,12 @@ class Service:
     async def _build_report(self, scan: dict, use_llm: bool) -> None:
         report = self._template_report(scan)
         if use_llm and report["items"] and self.llm.configured:
+            rows = self._task_rows(scan)
+            details = {r["finding_id"]: self.finding_detail(r["finding_id"]) for r in rows}
             try:
-                draft = await agents.write_report(self.llm, self._task_rows(scan), report["items"])
+                # LLM이 멈춰도 점검이 'reporting'에 묶이지 않게 전체 시간을 자른다(항목당 최대 2회 × 60초)
+                draft = await asyncio.wait_for(
+                    agents.write_report(self.llm, rows, report["items"], details), timeout=REPORT_TIMEOUT_SEC)
             except Exception:
                 log.exception("조치 가이드 생성 실패, 기본 가이드로 대체: %s", scan["scan_id"])
                 draft = None

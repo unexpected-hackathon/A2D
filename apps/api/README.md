@@ -71,7 +71,25 @@ a2d/
 
 ### LLM 붙이기
 
-GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 된다. 조치 설명·질의응답은 `a2d/agents/__init__.py`의 `write_report`, `answer_question`을 채우면 API가 바로 쓴다. 비어 있거나 실패하면 기본 가이드(`source: "template"`)로 나가고, 질의응답은 `503 LLM_UNAVAILABLE`이다.
+GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 되고, 조치 가이드와 질의응답이 LLM을 쓴다. 호출은 모두 `a2d/agents/__init__.py`에 있다. 추가 점검(`run_attack`)은 아직 비어 있다.
+
+LLM에는 발견 ID, 점검 항목, 자산 별칭, 점수 요소, 가린 증거, 팀이 쓴 기본 가이드만 보낸다. 발견 위치(URL)와 응답 원문은 보내지 않는다. 답은 vLLM 구조화 출력(`response_format` json_schema)으로 JSON만 받는다. 서버가 이를 거절하면 schema 없이 다시 보내고, 답에서 JSON을 꺼내 쓴다.
+
+**조치 가이드(`write_report`, FR-07·08).** 점검이 끝날 때 오늘 할 일 3항목을 동시에 요청한다(서버 속도가 초당 약 16토큰이라 순서대로면 1분이 넘는다). LLM은 제목·왜 위험한가·예상 피해를 쓰고, 조치 방법은 기본 가이드의 단계 중에서 번호로 고르기만 한다. 순위·발견 ID·조치 시간·조치 후 점수는 코드가 넣는다. 항목마다 코드가 근거 검증(상세설계 4절)을 한다.
+
+| 규칙 | 검사 |
+| --- | --- |
+| 발견 ID | 답의 `finding_id`가 그 항목의 발견과 같다 |
+| 자산·점수·시간 | 문장 속 숫자는 그 발견의 점수·조치 시간·증거·기본 가이드에 나온 것만. 다른 두 항목의 자산 별칭이 나오면 실패 |
+| CVE | 그 발견에 붙은 CVE만 |
+| 조치 문안 | 조치 단계 번호가 기본 가이드 범위 안. 문장을 새로 쓰지 않으므로 문안 밖 명령어가 들어갈 수 없다 |
+| 형식 | 제목 40자·왜 위험한가 200자·예상 피해 150자 이내, 한자·가나 없음 |
+
+실패하면 이유를 붙여 한 번 더 요청하고, 다시 실패한 항목은 기본 가이드 문장으로 채운다. `verification.passed`는 LLM 문장이 검증을 통과한 항목 수, `total`은 항목 수다. 하나도 통과하지 못했거나, LLM이 응답하지 않거나, 전체가 150초를 넘기면 `source: "template"`으로 나간다.
+
+**질의응답(`answer_question`, FR-12).** 위험 점수 순 상위 15개 발견(발견 데이터가 6,000자를 넘으면 낮은 것부터 뺀다)과 질문을 한 번 보낸다(25초 제한, 30초 안에 답해야 해 재요청은 하지 않는다). 답의 `finding_ids` 중 이번 점검에 없는 ID는 버리고, 남은 ID가 없으면 "이번 점검 결과로는 답할 근거가 없습니다."로 답한다. 증거에 없는 CVE나 한자·가나가 섞이면 같은 문장에 `verification.passed: false`를 붙인다. LLM 요청이 실패하면 `503 LLM_UNAVAILABLE`이다.
+
+테스트(`tests/test_agents.py`)는 `httpx.MockTransport`로 만든 가짜 vLLM을 쓰고 실제 네트워크에 나가지 않는다.
 
 ## API 명세와 다른 점
 
