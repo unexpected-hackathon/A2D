@@ -17,15 +17,21 @@ import {
   IconClockFill,
   IconHouseFill,
   IconPlusLine,
+  IconTrashcanLine,
 } from '@karrotmarket/react-monochrome-icon'
 import { HStack, Icon, Text, VStack } from '@seed-design/react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
+import { ActionButton } from 'seed-design/ui/action-button'
 import { Avatar } from 'seed-design/ui/avatar'
 import { Badge } from 'seed-design/ui/badge'
+import { Callout } from 'seed-design/ui/callout'
+import { DialogBody, DialogContent, DialogFooter, DialogRoot } from 'seed-design/ui/dialog'
 import { IdentityPlaceholder } from 'seed-design/ui/identity-placeholder'
 import { MenuContent, MenuGroup, MenuItem, MenuRoot, MenuTrigger } from 'seed-design/ui/menu'
+import { ApiError } from '../api/client'
 import { api } from '../api/endpoints'
+import type { Domain } from '../api/types'
 import iconUrl from '../assets/a2d-icon.svg'
 import logoUrl from '../assets/a2d-logo.svg'
 import { DomainProvider } from '../hooks/DomainProvider'
@@ -48,8 +54,9 @@ const NEUTRAL = { key: 'none', fill: 'var(--a2d-sheet)', ink: 'var(--a2d-navy)' 
 
 // 점검 대상 도메인. 누르면 다른 도메인으로 바꾸거나 새 도메인을 추가한다.
 function DomainSwitcher() {
-  const { domain, domains, select } = useDomain()
+  const { domain, domains, select, reload } = useDomain()
   const navigate = useNavigate()
+  const [confirmOpen, setConfirmOpen] = useState(false)
   return (
     <MenuRoot>
       <MenuTrigger asChild>
@@ -90,9 +97,88 @@ function DomainSwitcher() {
         )}
         <MenuGroup>
           <MenuItem label="도메인 추가" prefixIcon={<IconPlusLine />} onClick={() => navigate('/register')} />
+          <MenuItem
+            label={`${domain.domain} 삭제`}
+            prefixIcon={<IconTrashcanLine />}
+            tone="critical"
+            onClick={() => setConfirmOpen(true)}
+          />
         </MenuGroup>
       </MenuContent>
+      <DomainDeleteDialog
+        domain={domain}
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        onDeleted={() => {
+          // 목록을 다시 불러온다. 지운 도메인이 현재였으면 resolveDomain이 남은 첫 도메인을 고르고,
+          // 하나도 없으면 DomainProvider가 등록 화면으로 보낸다.
+          void reload()
+          navigate('/dashboard')
+        }}
+      />
     </MenuRoot>
+  )
+}
+
+// 도메인 삭제 확인 모달. 되돌릴 수 없는 작업이라 한 번 더 묻는다.
+function DomainDeleteDialog({
+  domain,
+  open,
+  onOpenChange,
+  onDeleted,
+}: {
+  domain: Domain
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onDeleted: () => void
+}) {
+  const [error, setError] = useState<string>()
+  const [busy, setBusy] = useState(false)
+
+  const remove = async () => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      await api.domains.remove(domain.domain_id)
+      onOpenChange(false)
+      onDeleted()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '도메인을 삭제하지 못했습니다.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <DialogRoot
+      open={open}
+      onOpenChange={(o) => {
+        if (busy) return
+        if (!o) setError(undefined)
+        onOpenChange(o)
+      }}
+    >
+      <DialogContent title="도메인 삭제" style={{ maxWidth: 480, width: 'calc(100% - 32px)' }}>
+        <DialogBody>
+          <VStack gap="x4">
+            <Text textStyle="t4Regular" color="fg.neutral">
+              {`${domain.domain}과(와) 이 도메인의 모든 점검 기록(점수·발견·조치 가이드)이 지워집니다. 되돌릴 수 없습니다.`}
+            </Text>
+            {error && <Callout tone="critical" description={error} />}
+          </VStack>
+        </DialogBody>
+        <DialogFooter>
+          <HStack gap="x2" justify="flex-end" width="full">
+            <ActionButton variant="neutralWeak" onClick={() => onOpenChange(false)} disabled={busy}>
+              취소
+            </ActionButton>
+            <ActionButton variant="criticalSolid" loading={busy} onClick={remove}>
+              삭제
+            </ActionButton>
+          </HStack>
+        </DialogFooter>
+      </DialogContent>
+    </DialogRoot>
   )
 }
 

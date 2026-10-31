@@ -32,7 +32,7 @@ import {
   type Factors,
 } from './score'
 
-type Method = 'GET' | 'POST' | 'PATCH'
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE'
 interface MockResponse {
   status: number
   data?: unknown
@@ -341,6 +341,31 @@ route('GET', '/domains', () => ok({ items: [...state.domains.values()] }))
 route('GET', '/domains/([^/]+)', ([id]) => {
   const domain = state.domains.get(id)
   return domain ? ok(domain) : notFound()
+})
+
+// 도메인과 딸린 점검을 지운다. 진행 중인 점검이 있으면 409로 막는다(백엔드와 같다).
+route('DELETE', '/domains/([^/]+)', ([id]) => {
+  if (!state.domains.has(id)) return notFound()
+  const running = state.scans.find((s) => {
+    if (s.domain_id !== id) return false
+    const st = scanStatus(s).status
+    return st !== 'done' && st !== 'stopped'
+  })
+  if (running) {
+    return {
+      status: 409,
+      data: {
+        error: {
+          code: 'SCAN_IN_PROGRESS',
+          message: '진행 중인 점검이 있어 도메인을 삭제할 수 없습니다. 점검을 멈춘 뒤 다시 시도해 주세요.',
+          scan_id: running.scan_id,
+        },
+      },
+    }
+  }
+  state.domains.delete(id)
+  state.scans = state.scans.filter((s) => s.domain_id !== id)
+  return ok(undefined, 204)
 })
 
 route('POST', '/domains/([^/]+)/verify', ([id]) => {

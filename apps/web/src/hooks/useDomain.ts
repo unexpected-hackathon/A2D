@@ -8,6 +8,7 @@ export interface DomainState {
   domain: Domain
   domains: Domain[]
   select: (domainId: string) => void // 다른 도메인으로 바꾸기
+  reload: () => Promise<void> // 목록을 다시 불러온다(도메인 삭제 뒤 등)
 }
 
 export const DomainContext = createContext<DomainState | null>(null)

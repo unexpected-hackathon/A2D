@@ -8,7 +8,7 @@ type HandleMock = typeof import('./server').handleMock
 let handleMock: HandleMock
 
 // 요청 하나를 보내고 응답 지연만큼 시계를 돌린다.
-async function call<T = unknown>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown) {
+async function call<T = unknown>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown) {
   const pending = handleMock(method, path, body)
   await vi.advanceTimersByTimeAsync(500)
   const res = await pending
@@ -144,5 +144,28 @@ describe('자산 중요도 수정', () => {
 
   it('1~5 밖이면 400', async () => {
     expect((await call('PATCH', '/domains/DOM-1/assets/A-002', { importance: 9 })).status).toBe(400)
+  })
+})
+
+describe('도메인 삭제', () => {
+  it('진행 중인 점검이 있으면 409로 막는다', async () => {
+    const started = await call<{ scan_id: string }>('POST', '/domains/DOM-1/scans')
+    const res = await call<{ error: { code: string; scan_id: string } }>('DELETE', '/domains/DOM-1')
+    expect(res.status).toBe(409)
+    expect(res.data.error.code).toBe('SCAN_IN_PROGRESS')
+    expect(res.data.error.scan_id).toBe(started.data.scan_id)
+  })
+
+  it('점검이 끝난 도메인을 지우면 204, 목록과 점검이 사라진다', async () => {
+    await rescan() // 점검 하나를 끝까지 돌린다
+    const del = await call('DELETE', '/domains/DOM-1')
+    expect(del.status).toBe(204)
+    expect((await call<ItemList<{ domain: string }>>('GET', '/domains')).data.items).toEqual([])
+    expect((await call('GET', '/domains/DOM-1')).status).toBe(404)
+    expect((await call('GET', '/scans/S-0001')).status).toBe(404)
+  })
+
+  it('없는 도메인은 404', async () => {
+    expect((await call('DELETE', '/domains/DOM-9999')).status).toBe(404)
   })
 })

@@ -23,8 +23,8 @@ export function DomainProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<DomainState | null>(
-    () => (data?.current ? { domain: data.current, domains: data.domains, select } : null),
-    [data, select],
+    () => (data?.current ? { domain: data.current, domains: data.domains, select, reload } : null),
+    [data, select, reload],
   )
 
   if (error) {
