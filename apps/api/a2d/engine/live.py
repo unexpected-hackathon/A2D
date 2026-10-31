@@ -402,16 +402,19 @@ class LiveEngine(Engine):
         r = await http.get(f"https://{a.host}/")
         if r is None:
             return
-        cookie = r.header("set-cookie")
-        if not cookie:
+        # 쿠키마다 따로 본다. 한 쿠키의 Secure가 다른 쿠키의 누락을 가리지 않게 한다.
+        weak = []  # (로그인 쿠키인가, 이름, 빠진 속성)
+        for cookie in r.set_cookies:
+            name, attrs = _cookie_attrs(cookie)
+            missing = [x for x in ("secure", "httponly", "samesite") if x not in attrs]
+            if missing:
+                weak.append((_is_session_cookie(name), name, missing))
+        if not weak:
             return
-        low = cookie.lower()
-        missing = [x for x in ("secure", "httponly", "samesite") if x not in low]
-        if missing:
-            name = cookie.split("=", 1)[0].strip().lower()
-            session = any(k in name for k in ("session", "sess", "sid", "auth", "token"))
-            self._add(ctx, a, 31, "login" if session else "other", f"GET {r.url}",
-                      f"쿠키에 {'·'.join(missing)} 속성 누락")
+        session, name, missing = max(weak, key=lambda w: (w[0], len(w[2])))  # 로그인 쿠키를 먼저 알린다
+        more = f" 외 {len(weak) - 1}개" if len(weak) > 1 else ""
+        self._add(ctx, a, 31, "login" if session else "other", f"GET {r.url}",
+                  f"쿠키 {name[:40]}{more}에 {'·'.join(missing)} 속성 누락")
 
     # ---------------------------------------------------------------- #14
     async def _check_bucket(self, ctx, http, a: Asset) -> None:
@@ -583,6 +586,18 @@ def _is_login(text: str) -> bool:
     low = text.lower()
     return ('type="password"' in low or "type='password'" in low
             or ("관리자" in text and ("로그인" in text or "콘솔" in text)))
+
+
+def _cookie_attrs(cookie: str) -> tuple[str, set[str]]:
+    """Set-Cookie 한 줄을 (이름, 소문자 속성 이름 집합)으로 나눈다. 값 안의 글자는 속성으로 보지 않는다."""
+    first, *rest = cookie.split(";")
+    name = first.split("=", 1)[0].strip()
+    return name, {part.split("=", 1)[0].strip().lower() for part in rest if part.strip()}
+
+
+def _is_session_cookie(name: str) -> bool:
+    low = name.lower()
+    return any(k in low for k in ("session", "sess", "sid", "auth", "token", "jwt", "login"))
 
 
 def _secret_kinds(text: str) -> list[str]:
