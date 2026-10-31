@@ -19,8 +19,8 @@ import re
 from dataclasses import dataclass, field
 
 from ..config import Settings
-from .base import Engine, EngineContext, RawAsset, RawFinding
-from .net import (Dns, DnsResolver, Fetched, HttpClient, Tls, TlsInspector,
+from .base import Engine, EngineContext, EngineError, RawAsset, RawFinding
+from .net import (CertInfo, Dns, DnsResolver, DnsUnavailable, Fetched, HttpClient, Tls, TlsInspector,
                   open_http_client)
 
 log = logging.getLogger("a2d.engine.live")
@@ -31,8 +31,7 @@ SUBDOMAIN_WORDS = ("www", "api", "admin", "staging", "dev", "test", "mail", "rec
 
 SECURITY_HEADERS = ("strict-transport-security", "content-security-policy", "x-frame-options")
 # 공개돼 있으면 안 되는 운영 경로(#20). 환경 변수가 보이면 env, 상태·통계만 보이면 status.
-STATUS_PATHS = (("/actuator/env", "env"), ("/server-status", "status"), ("/phpinfo.php", "status"),
-                ("/metrics", "status"))
+STATUS_PATHS = ("/actuator/env", "/server-status", "/phpinfo.php", "/metrics")
 BACKUP_PATHS = ("/backup.zip", "/backup.sql", "/db.sql", "/dump.sql")
 CONFIG_PATHS = (("/.env", "env"), ("/.git/HEAD", "git"), ("/.git/config", "git"))
 API_DOC_PATHS = ("/openapi.json", "/swagger.json", "/swagger", "/docs", "/api-docs")
@@ -48,8 +47,13 @@ SECRET_PATTERNS = {
     "GitHub 토큰": re.compile(r"\b(?:ghp_|github_pat_)[0-9A-Za-z_]{20,}"),
     "OpenAI 키": re.compile(r"\bsk-proj-[0-9A-Za-z_-]{10,}"),
     "Anthropic 키": re.compile(r"\bsk-ant-[0-9A-Za-z_-]{10,}"),
-    "Supabase service_role 키": re.compile(r"service_role"),
+    "개인 키 파일": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----"),
 }
+# 문서·예제에 쓰는 자리표시 키(AWS 문서의 AKIAIOSFODNN7EXAMPLE 등)는 비밀키로 보지 않는다(점검점수설계 #12 조건).
+_PLACEHOLDER = re.compile(r"example|sample|dummy|placeholder|your[_-]?|x{6,}", re.I)
+# Supabase 키는 JWT라 앞부분이 공개 키(anon)와 같다. 본문(payload)의 role이 service_role일 때만 비밀키다.
+_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.(eyJ[A-Za-z0-9_-]{8,})\.[A-Za-z0-9_-]{8,}")
+_SOURCEMAP_URL = re.compile(r"[#@]\s*sourceMappingURL=([^\s'\"*]+)")
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?<!\d)01[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)")  # 숫자 경계: 주문번호·타임스탬프 오탐 방지
@@ -61,7 +65,24 @@ _HREF = re.compile(r'https?://([a-z0-9.\-]+)', re.I)
 # 우리 사이트가 가리키는 클라우드 저장소 버킷(#14). 이름을 추측하지 않고 코드에 나온 것만 본다.
 _CLOUD_HOST = re.compile(r'([a-z0-9.\-]+\.s3[a-z0-9.\-]*\.amazonaws\.com|[a-z0-9.\-]+\.blob\.core\.windows\.net|[a-z0-9.\-]+\.kr\.object\.ncloudstorage\.com)', re.I)
 _GENERATOR = re.compile(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']{1,60})', re.I)
-_JQUERY = re.compile(r"jquery[.-]?(\d+\.\d+\.\d+)", re.I)
+_JQUERY = re.compile(r"jquery[.@-]?v?(\d+\.\d+\.\d+)", re.I)
+_GENERATOR_VERSION = re.compile(r"^(.+?)\s+v?(\d+(?:\.\d+)*)\s*$")
+# 버전은 몰라도 쓰는 것만은 알 수 있는 부품(#24 식별 범위: 기존 방식 + 바이브코딩 방식)
+_FRAMEWORK_MARKS = (
+    ("WordPress", ("/wp-content/", "/wp-includes/")),
+    ("그누보드", ("g5_url", "/gnuboard")),
+    ("영카트", ("g5_shop_url", "youngcart")),
+    ("라이믹스", ("rhymix",)),
+    ("Next.js", ("/_next/static/", "__next_data__")),
+    ("Nuxt", ("/_nuxt/", "window.__nuxt__")),
+    ("React", ("data-reactroot", "react-dom")),
+    ("Supabase", (".supabase.co",)),
+    ("Firebase", ("firebaseapp.com", "firebaseio.com", "firebasejs")),
+)
+_PRODUCT_NAMES = {"apache": "Apache", "php": "PHP", "nginx": "nginx", "openssl": "OpenSSL",
+                  "iis": "IIS", "express": "Express"}
+# 서버 소프트웨어 버전을 읽을 자산(TLS 버전·인증서도 자산 찾기에서 한 번만 본다)
+TLS_ROLES = ("web", "api", "admin", "dev")
 
 # 내장한 취약 버전 목록(#23). 실제 서비스라면 주기적으로 갱신한다.
 KNOWN_VULNS = {
@@ -72,6 +93,8 @@ KNOWN_VULNS = {
 EOL = {("php", "8.1"), ("php", "8.0"), ("php", "7.4"), ("openssl", "1.1")}
 
 EVIDENCE_LIMIT = 200
+DNS_FAILURE_LIMIT = 3  # DNS가 연달아 이만큼 답하지 않으면 자산 찾기를 그만둔다(시간 초과가 쌓이지 않게)
+REACH_PROBE_LIMIT = 3  # 자산 찾기에서 응답이 하나도 없을 때 더 두드려 볼 자산 수
 
 
 @dataclass
@@ -83,6 +106,8 @@ class Asset:
     importance_rule: str
     found_by: list[int] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    components: list[dict] = field(default_factory=list)  # #24 {"name", "version", "eol"}
+    cert: CertInfo | None = None  # 자산 찾기에서 본 인증서. #28이 다시 연결하지 않고 쓴다
 
 
 def _clip(text: str) -> str:
@@ -107,6 +132,10 @@ class LiveEngine(Engine):
         try:
             ctx.set_stage("discovering", "자산을 찾는 중", 0, 1)
             assets = await self._discover(ctx, http)
+            if not assets:
+                raise EngineError("이 도메인에서 주소가 있는 호스트를 찾지 못해 점검하지 못했습니다. "
+                                  "도메인의 DNS 레코드를 확인해 주세요.")
+            await self._ensure_reachable(http, assets)
             ctx.set_stage("discovering", "자산을 찾는 중", 1, 1)
 
             # 같은 서비스를 가리키는 꼭짓점·www 자산에 점검이 겹치지 않게, 대표 웹 자산 하나만 깊게 본다.
@@ -145,10 +174,21 @@ class LiveEngine(Engine):
         found: dict[str, Asset] = {}
 
         # #1 하위 도메인 찾기 + 꼭짓점 도메인. DNS는 블로킹이라 스레드로 보내고, 사이사이 중지를 확인한다.
+        # DNS가 답하지 않으면 '없음'으로 넘기지 않고, 연달아 실패하면 점검을 실패로 끝낸다.
+        failures = 0
         for host in [domain] + [f"{w}.{domain}" for w in SUBDOMAIN_WORDS]:
             ctx.budget.check()
-            cname = await asyncio.to_thread(self._dns.cname, host)
-            addrs = await asyncio.to_thread(self._dns.a, host)
+            try:
+                cname = await asyncio.to_thread(self._dns.cname, host)
+                addrs = await asyncio.to_thread(self._dns.a, host)
+            except DnsUnavailable as e:
+                failures += 1
+                log.info("DNS 무응답(%d/%d): %s", failures, DNS_FAILURE_LIMIT, e)
+                if failures >= DNS_FAILURE_LIMIT:
+                    raise EngineError("도메인의 DNS 서버가 응답하지 않아 점검하지 못했습니다. "
+                                      "잠시 뒤 다시 시도해 주세요.") from e
+                continue
+            failures = 0
             if not cname and not addrs:
                 continue
             found[host] = self._classify(host, domain, cname)
@@ -167,6 +207,7 @@ class LiveEngine(Engine):
                 cloud_hosts |= {m.group(1).lower() for m in _CLOUD_HOST.finditer(app_js.text)}
             if web_host in found:
                 found[web_host].found_by.append(2)
+                found[web_host].components = _identify_components(home)  # #24
         robots = await http.get(f"https://{web_host}/robots.txt")
         sitemap = await http.get(f"https://{web_host}/sitemap.xml")
         for doc in (robots, sitemap):
@@ -181,8 +222,13 @@ class LiveEngine(Engine):
                 continue
             if not host.endswith("." + domain):
                 continue
-            cname = await asyncio.to_thread(self._dns.cname, host)
-            if cname or await asyncio.to_thread(self._dns.a, host):
+            try:
+                cname = await asyncio.to_thread(self._dns.cname, host)
+                addrs = [] if cname else await asyncio.to_thread(self._dns.a, host)
+            except DnsUnavailable as e:
+                log.info("DNS 무응답, 링크로 찾은 호스트를 건너뜀: %s", e)
+                continue
+            if cname or addrs:
                 found[host] = self._classify(host, domain, cname)
                 found[host].found_by.append(2)
 
@@ -192,13 +238,37 @@ class LiveEngine(Engine):
                 found[host] = Asset(host, host.split(".")[0], "cloud", 5,
                                     "우리 사이트가 쓰는 클라우드 저장소", found_by=[14], tags=["cloud"])
 
+        # 인증서·TLS 버전: 우리 서버 자산마다 한 번씩, 동시에 본다(자산 정보 표시와 #28이 함께 쓴다)
+        ctx.budget.check()
+        tls_assets = [a for a in found.values() if a.role in TLS_ROLES]
+        certs = await asyncio.gather(*(asyncio.to_thread(self._tls.inspect, a.host) for a in tls_assets))
+        for a, cert in zip(tls_assets, certs):
+            a.cert = cert
+
         # 등록. 외부 ATS(#4 recruit)는 식별만 하고 자산 메모로 남긴다.
         assets = sorted(found.values(), key=lambda a: (self._role_order(a.role), a.host))
         for a in assets:
+            tls_version = _tls_label(a.cert.tls_version) if a.cert and not a.cert.error else None
             ctx.add_asset(RawAsset(host=a.host, alias=a.alias, url=f"https://{a.host}/",
                                    found_by=sorted(set(a.found_by)), tags=a.tags,
-                                   importance=a.importance, importance_rule=a.importance_rule))
+                                   importance=a.importance, importance_rule=a.importance_rule,
+                                   components=a.components, tls_version=tls_version))
         return assets
+
+    async def _ensure_reachable(self, http: HttpClient, assets: list[Asset]) -> None:
+        """대상에 하나도 닿지 못하면 점검을 실패로 끝낸다. 아무것도 못 본 점검이 100점(A)이 되지 않게 한다.
+
+        자산 찾기에서 응답을 받았으면 바로 넘어간다. 홈페이지가 없는 도메인(API만 있는 경우 등)도 있어,
+        응답이 없을 때만 다른 자산 몇 개의 첫 화면을 더 두드려 본다.
+        """
+        if http.responses:
+            return
+        for a in [a for a in assets if a.role in ("web", "api", "admin", "dev")][:REACH_PROBE_LIMIT]:
+            await http.get(f"https://{a.host}/")
+            if http.responses:
+                return
+        raise EngineError("대상 서버에 연결하지 못해 점검하지 못했습니다. 서버가 켜져 있는지, "
+                          "점검 서버에서 도메인 주소를 찾을 수 있는지(DNS 설정) 확인해 주세요.")
 
     def _classify(self, host: str, domain: str, cname: str | None) -> Asset:
         label = host[:-len(domain) - 1] if host != domain else ""
@@ -251,12 +321,13 @@ class LiveEngine(Engine):
         admin_found = False
 
         if a.role == "web" and a.host == primary_host:  # 대표 웹 자산에서만(꼭짓점·www 중복 방지)
-            await self._check_files(ctx, http, a)       # #8 #9 #10
-            await self._check_error_page(ctx, http, a)  # #11
+            # 없는 주소부터 본다. 그 응답(모르는 경로를 index로 돌려주는 SPA 등)을 아래 경로 점검이 걸러 쓴다.
+            catch_all = await self._check_error_page(ctx, http, a)  # #11
+            await self._check_files(ctx, http, a, catch_all)       # #8 #9 #10
             await self._check_frontend(ctx, http, a)    # #12 #13 #24
-            await self._check_status_pages(ctx, http, a)  # #20
+            await self._check_status_pages(ctx, http, a, catch_all)  # #20
             if not admin_login_found:  # 관리자 하위 도메인에서 이미 찾았으면 한 번만 센다
-                admin_found = await self._check_admin_path(ctx, http, a)  # #18 (www/admin 등)
+                admin_found = await self._check_admin_path(ctx, http, a, catch_all)  # #18 (www/admin 등)
             await self._check_cookie(ctx, http, a)      # #31
         if a.role == "api":
             await self._check_unauth_api(ctx, http, a)  # #16
@@ -272,38 +343,44 @@ class LiveEngine(Engine):
         return admin_found
 
     # ---------------------------------------------------------------- #8 #9 #10
-    async def _check_files(self, ctx, http, a: Asset) -> None:
+    async def _check_files(self, ctx, http, a: Asset, catch_all: Fetched | None = None) -> None:
         for path in BACKUP_PATHS:
             r = await http.get(f"https://{a.host}{path}")
             if r is not None and r.status == 200 and _looks_like_file(r):
                 self._add(ctx, a, 8, "confirmed", f"GET {r.url}",
                           f"{path} 200 응답, 파일 형식 확인(가림)")
                 break  # 자산당 한 건
+        reported: set[str] = set()
         for path, situation in CONFIG_PATHS:
+            if situation in reported:
+                continue  # 같은 저장소(.git)는 한 건으로 센다
             r = await http.get(f"https://{a.host}{path}")
-            if r is not None and r.status == 200 and r.text.strip():
-                self._add(ctx, a, 9, situation, f"GET {r.url}", f"{path} 200 응답(가림)")
+            if (r is not None and r.status == 200 and not _same_as(r, catch_all)
+                    and _config_file_matches(path, r)):
+                self._add(ctx, a, 9, situation, f"GET {r.url}", f"{path} 200 응답, 파일 형식 확인(가림)")
+                reported.add(situation)
         r = await http.get(f"https://{a.host}/uploads/")
         if r is not None and r.status == 200 and "index of" in r.text.lower():
             situation = "sensitive" if SENSITIVE_NAME.search(r.text) else "basic"
             self._add(ctx, a, 10, situation, f"GET {r.url}", "디렉터리 목록 공개(파일 이름 가림)")
 
     # ---------------------------------------------------------------- #11
-    async def _check_error_page(self, ctx, http, a: Asset) -> None:
+    async def _check_error_page(self, ctx, http, a: Asset) -> Fetched | None:
+        """#11을 보고, 없는 주소에 200으로 답하면 그 응답을 돌려준다(이후 경로 점검의 비교 기준)."""
         r = await http.get(f"https://{a.host}/a2d-check-{_token()}")
         if r is None:
-            return
+            return None
         low = r.text.lower()
         if r.status >= 500 or "traceback" in low or "stack trace" in low or "sqlalchemy" in low:
             self._add(ctx, a, 11, "basic", f"GET {r.url}",
                       f"없는 주소에 오류 {r.status}, 내부 코드 기록·경로 노출(가림)")
+        return r if r.status == 200 else None
 
     # ---------------------------------------------------------------- #12 #13 #24
     async def _check_frontend(self, ctx, http, a: Asset) -> None:
         home = await http.get(f"https://{a.host}/")
         if home is None:
             return
-        self._identify_components(home)  # #24: 로그만. 점수 미반영
         scripts = set(re.findall(r'src=["\']([^"\']+\.js)["\']', home.text))
         scripts.add("/static/js/app.js")
         checked = 0
@@ -321,33 +398,37 @@ class LiveEngine(Engine):
             if kinds:
                 self._add(ctx, a, 12, "secret", f"GET {js.url}",
                           f"화면 코드에 {'·'.join(kinds)} 형태 키 노출(가림)")
-            if "sourcemappingurl" in js.text.lower():
-                mapr = await http.get(url + ".map")
-                if mapr is not None and mapr.status == 200:
-                    msecret = _secret_kinds(mapr.text)
-                    if msecret:
-                        self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
-                                  f"소스맵 안에 {'·'.join(msecret)} 형태 키 노출(가림)")
-                    else:
-                        self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
+            map_url = _sourcemap_url(js.text, url)
+            if map_url is None or not map_url.startswith(f"https://{a.host}/"):
+                continue  # 소스맵이 없거나, 코드 안에 들어 있거나(data:), 다른 곳에 있다
+            mapr = await http.get(map_url)
+            if mapr is None or mapr.status != 200 or not _is_sourcemap(mapr):
+                continue  # 모르는 경로를 index.html로 돌려주는 SPA는 소스맵 공개가 아니다
+            msecret = _secret_kinds(mapr.text)
+            if msecret and not kinds:  # 같은 키가 코드와 소스맵에 다 있으면 코드 쪽 한 건으로 센다
+                self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
+                          f"소스맵 안에 {'·'.join(msecret)} 형태 키 노출(가림)")
+            elif not msecret:
+                self._add(ctx, a, 13, "basic", f"GET {mapr.url}", "소스맵(.map) 공개")
 
     # ---------------------------------------------------------------- #20
-    async def _check_status_pages(self, ctx, http, a: Asset) -> None:
-        for path, situation in STATUS_PATHS:
+    async def _check_status_pages(self, ctx, http, a: Asset, catch_all: Fetched | None = None) -> None:
+        for path in STATUS_PATHS:
             r = await http.get(f"https://{a.host}{path}")
-            if r is None or r.status != 200:
+            if r is None or r.status != 200 or _same_as(r, catch_all) or not _status_page_matches(path, r):
                 continue
             low = r.text.lower()
-            if path == "/actuator/env" or "password" in low or "secret" in low or "db_" in low:
+            # 환경 변수 목록(actuator)이거나 phpinfo에 비밀값이 보이면 env. 통계만 보이면 status
+            if path == "/actuator/env" or (path == "/phpinfo.php" and ("password" in low or "secret" in low)):
                 self._add(ctx, a, 20, "env", f"GET {r.url}", f"{path} 공개, 환경 변수·비밀값 노출(가림)")
             else:
                 self._add(ctx, a, 20, "status", f"GET {r.url}", f"{path} 공개, 서버 상태·통계 노출")
 
     # ---------------------------------------------------------------- #18
-    async def _check_admin_path(self, ctx, http, a: Asset) -> bool:
+    async def _check_admin_path(self, ctx, http, a: Asset, catch_all: Fetched | None = None) -> bool:
         for path in ADMIN_PATHS:
             r = await http.get(f"https://{a.host}{path}")
-            if r is not None and r.status == 200 and _is_login(r.text):
+            if r is not None and r.status == 200 and not _same_as(r, catch_all) and _is_login(r.text):
                 self._add(ctx, a, 18, "basic", f"GET {r.url}", f"{path}에 관리자 로그인 화면 노출")
                 return True
         return False
@@ -412,16 +493,19 @@ class LiveEngine(Engine):
         r = await http.get(f"https://{a.host}/")
         if r is None:
             return
-        cookie = r.header("set-cookie")
-        if not cookie:
+        # 쿠키마다 따로 본다. 한 쿠키의 Secure가 다른 쿠키의 누락을 가리지 않게 한다.
+        weak = []  # (로그인 쿠키인가, 이름, 빠진 속성)
+        for cookie in r.set_cookies:
+            name, attrs = _cookie_attrs(cookie)
+            missing = [x for x in ("secure", "httponly", "samesite") if x not in attrs]
+            if missing:
+                weak.append((_is_session_cookie(name), name, missing))
+        if not weak:
             return
-        low = cookie.lower()
-        missing = [x for x in ("secure", "httponly", "samesite") if x not in low]
-        if missing:
-            name = cookie.split("=", 1)[0].strip().lower()
-            session = any(k in name for k in ("session", "sess", "sid", "auth", "token"))
-            self._add(ctx, a, 31, "login" if session else "other", f"GET {r.url}",
-                      f"쿠키에 {'·'.join(missing)} 속성 누락")
+        session, name, missing = max(weak, key=lambda w: (w[0], len(w[2])))  # 로그인 쿠키를 먼저 알린다
+        more = f" 외 {len(weak) - 1}개" if len(weak) > 1 else ""
+        self._add(ctx, a, 31, "login" if session else "other", f"GET {r.url}",
+                  f"쿠키 {name[:40]}{more}에 {'·'.join(missing)} 속성 누락")
 
     # ---------------------------------------------------------------- #14
     async def _check_bucket(self, ctx, http, a: Asset) -> None:
@@ -482,7 +566,8 @@ class LiveEngine(Engine):
             self._add(ctx, a, 27, "basic", f"GET http://{a.host}/", "HTTP 접속을 HTTPS로 옮기지 않음")
 
     async def _check_tls(self, ctx, a: Asset) -> None:
-        info = await asyncio.to_thread(self._tls.inspect, a.host)  # TLS 핸드셰이크는 블로킹
+        # 자산 찾기에서 본 인증서를 쓴다. 없을 때만 다시 연결한다(TLS 핸드셰이크는 블로킹)
+        info = a.cert if a.cert is not None else await asyncio.to_thread(self._tls.inspect, a.host)
         if info.error or info.not_after is None:
             return
         days = (info.not_after - dt.datetime.now(dt.timezone.utc)).days
@@ -505,8 +590,12 @@ class LiveEngine(Engine):
     # ---------------------------------------------------------------- #32
     async def _check_mail(self, ctx: EngineContext) -> None:
         domain = ctx.domain.lower().strip(".")
-        spf = _find_txt(await asyncio.to_thread(self._dns.txt, domain), "v=spf1")
-        dmarc = _find_txt(await asyncio.to_thread(self._dns.txt, f"_dmarc.{domain}"), "v=dmarc1")
+        try:
+            spf = _find_txt(await asyncio.to_thread(self._dns.txt, domain), "v=spf1")
+            dmarc = _find_txt(await asyncio.to_thread(self._dns.txt, f"_dmarc.{domain}"), "v=dmarc1")
+        except DnsUnavailable as e:
+            log.info("DNS 무응답, #32는 판정하지 않음: %s", e)  # 모르는 것을 '없음'으로 보고하지 않는다
+            return
         spf_enforces = spf is not None and ("-all" in spf or "~all" in spf)
         dmarc_enforces = dmarc is not None and ("p=quarantine" in dmarc.lower() or "p=reject" in dmarc.lower())
         if dmarc_enforces and not spf_enforces:
@@ -540,19 +629,42 @@ class LiveEngine(Engine):
         except ValueError:
             return False
 
-    def _identify_components(self, home: Fetched) -> None:
-        comps = []
-        m = _GENERATOR.search(home.text)
-        if m:
-            comps.append(m.group(1).strip())
-        jm = _JQUERY.search(home.text)
-        if jm:
-            comps.append(f"jQuery {jm.group(1)}")
-        if comps:
-            log.info("#24 부품 식별(%s): %s", home.url, ", ".join(comps))
-
 
 # ==================================================================== 보조 함수
+
+def _identify_components(home: Fetched) -> list[dict]:
+    """#24 홈페이지 부품 식별. 이미 받은 첫 화면(본문·헤더)만 읽는다. 점수에는 넣지 않고 자산 정보에 표시한다."""
+    comps: list[dict] = []
+
+    def add(name: str, version: str, eol: bool = False) -> None:
+        if all(c["name"].lower() != name.lower() for c in comps):
+            comps.append({"name": name, "version": version, "eol": eol})
+
+    m = _GENERATOR.search(home.text)
+    if m:
+        gen = m.group(1).strip()
+        gv = _GENERATOR_VERSION.match(gen)
+        add(*(gv.groups() if gv else (gen, "")))
+    jm = _JQUERY.search(home.text)
+    if jm:
+        add("jQuery", jm.group(1), eol=int(jm.group(1).split(".")[0]) < 3)  # 1.x·2.x는 지원 종료
+    server = f"{home.header('server') or ''} {home.header('x-powered-by') or ''}"
+    for product, version in _versions(server):
+        major_minor = ".".join(version.split(".")[:2])
+        add(_PRODUCT_NAMES.get(product, product), version, eol=(product, major_minor) in EOL)
+    low = home.text.lower()
+    for name, marks in _FRAMEWORK_MARKS:
+        if any(mark in low for mark in marks):
+            add(name, "")
+    return comps
+
+
+def _tls_label(version: str | None) -> str | None:
+    """ssl의 'TLSv1.3'을 API 명세의 'TLS 1.3' 표기로 바꾼다."""
+    if not version:
+        return None
+    return re.sub(r"^TLSv?(\d)", r"TLS \1", version)
+
 
 def _token() -> str:
     import secrets
@@ -575,6 +687,69 @@ def _looks_like_file(r: Fetched) -> bool:
     return r.text[:8].startswith("PK\x03\x04") or any(head.startswith(m.upper()) for m in magic)
 
 
+def _is_html(r: Fetched) -> bool:
+    if "html" in (r.header("content-type") or ""):
+        return True
+    head = r.text[:256].lstrip().lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
+
+
+def _same_as(r: Fetched, catch_all: Fetched | None) -> bool:
+    """없는 주소의 200 응답과 같은 내용인지. 모르는 경로를 모두 index.html로 돌려주는 SPA를 걸러 낸다.
+
+    주소가 본문에 찍히는 서버가 있어 각자의 경로를 지우고 비교한다.
+    """
+    if catch_all is None or r.status != catch_all.status:
+        return False
+
+    def body(x: Fetched) -> str:
+        return x.text.replace(_url_path(x.url), "").strip()
+
+    return body(r) == body(catch_all)
+
+
+def _url_path(url: str) -> str:
+    rest = url.split("://", 1)[-1]
+    return "/" + rest.split("/", 1)[1] if "/" in rest else "/"
+
+
+_ENV_LINE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*[ \t]*=")
+_GIT_HEAD = re.compile(r"\s*(?:ref:[ \t]*refs/|[0-9a-f]{40}\b)")
+
+
+def _config_file_matches(path: str, r: Fetched) -> bool:
+    """설정 파일·저장소 파일의 실제 형식인지(#9). HTML이나 아무 텍스트로는 켜지 않는다."""
+    if _is_html(r):
+        return False
+    if path == "/.env":
+        return bool(_ENV_LINE.search(r.text))
+    if path == "/.git/HEAD":
+        return bool(_GIT_HEAD.match(r.text))
+    if path == "/.git/config":
+        return "[core]" in r.text
+    return False
+
+
+def _status_page_matches(path: str, r: Fetched) -> bool:
+    """운영·상태 페이지의 실제 내용인지(#20). 경로만 열려 있다고 켜지 않는다."""
+    import json
+
+    low = r.text.lower()
+    if path == "/actuator/env":
+        try:
+            obj = json.loads(r.text)
+        except ValueError:
+            return False
+        return isinstance(obj, dict) and bool({"propertySources", "activeProfiles"} & set(obj))
+    if path == "/server-status":
+        return "server status" in low or "total accesses" in low
+    if path == "/phpinfo.php":
+        return "phpinfo()" in low or "php version" in low
+    if path == "/metrics":
+        return not _is_html(r) and ("# help " in low or "# type " in low)
+    return False
+
+
 def _is_api_doc(r: Fetched) -> bool:
     """실제 API 설명서인지(#17). 일반 /docs 페이지가 걸리지 않게 OpenAPI JSON이나 UI 표식을 본다."""
     import json
@@ -595,9 +770,67 @@ def _is_login(text: str) -> bool:
             or ("관리자" in text and ("로그인" in text or "콘솔" in text)))
 
 
+def _cookie_attrs(cookie: str) -> tuple[str, set[str]]:
+    """Set-Cookie 한 줄을 (이름, 소문자 속성 이름 집합)으로 나눈다. 값 안의 글자는 속성으로 보지 않는다."""
+    first, *rest = cookie.split(";")
+    name = first.split("=", 1)[0].strip()
+    return name, {part.split("=", 1)[0].strip().lower() for part in rest if part.strip()}
+
+
+def _is_session_cookie(name: str) -> bool:
+    low = name.lower()
+    return any(k in low for k in ("session", "sess", "sid", "auth", "token", "jwt", "login"))
+
+
 def _secret_kinds(text: str) -> list[str]:
-    """비밀키 형태를 센다. 공개용 키(pk_live_·AIza 등)만 있고 비밀키가 없으면 빈 목록."""
-    return [name for name, pat in SECRET_PATTERNS.items() if pat.search(text)]
+    """비밀키 형태를 센다. 공개용 키(pk_live_·AIza·Supabase anon 등)와 문서용 예시 키는 세지 않는다."""
+    kinds = [name for name, pat in SECRET_PATTERNS.items()
+             if any(not _PLACEHOLDER.search(m.group(0)) for m in pat.finditer(text))]
+    if any(_jwt_role(m.group(1)) == "service_role" for m in _JWT.finditer(text)):
+        kinds.append("Supabase service_role 키")
+    return kinds
+
+
+def _jwt_role(payload_b64: str) -> str | None:
+    import base64
+    import json
+
+    try:
+        raw = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
+        obj = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    role = obj.get("role") if isinstance(obj, dict) else None
+    return role if isinstance(role, str) else None
+
+
+def _sourcemap_url(js_text: str, js_url: str) -> str | None:
+    """코드 끝의 sourceMappingURL 주석이 가리키는 주소. 코드에 들어 있는 소스맵(data:)은 None."""
+    from urllib.parse import urljoin
+
+    found = _SOURCEMAP_URL.findall(js_text)
+    if not found or found[-1].startswith("data:"):
+        return None
+    return urljoin(js_url, found[-1])
+
+
+def _is_sourcemap(r: Fetched) -> bool:
+    import json
+
+    if _is_html(r):
+        return False
+    try:
+        obj = json.loads(r.text)
+    except ValueError:
+        return False
+    return isinstance(obj, dict) and bool({"mappings", "sources", "sourcesContent"} & set(obj))
+
+
+def _is_html(r: Fetched) -> bool:
+    if "html" in (r.header("content-type") or ""):
+        return True
+    head = r.text[:256].lstrip().lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
 
 
 def _pii_shape(r: Fetched) -> tuple[list[str], int | None]:
