@@ -3,13 +3,12 @@
 //   ┌ 머리글(위에 고정) ─────────────────────────────────────┐
 //   │ 로고  [점검 대상 도메인 ▾]                    [사용자 ▾] │
 //   └───────────────────────────────────────────────────────┘
-//   ▐주황▌┌ 내용 영역(큰 카드) ───────────────────────────────┐
-//        │  지금 주소의 화면(<Outlet />)                        │
-//    ▐흰▌│  바탕은 고른 탭과 같은 색(물결로 쓸고 지나가며 바뀜)  │
-//        │                                                   │
-//     ▐갈▌│                                                   │
-//        └───────────────────────────────────────────────────┘
-//   파일 색인 탭 세 개(IndexTabs)가 메뉴다. 휴대폰에서는 탭이 카드 위쪽에 가로로 붙는다.
+//   ▟주황▙▟흰색▙▟갈색▙
+//   ┌ 내용 영역(큰 카드) ────────────────────────────────────┐
+//   │  지금 주소의 화면(<Outlet />)                           │
+//   │  바탕은 고른 탭과 같은 색(물결로 쓸고 지나가며 바뀜)     │
+//   └───────────────────────────────────────────────────────┘
+//   카드 왼쪽 위에 붙은 파일 색인 탭 세 개(IndexTabs)가 메뉴다.
 
 import {
   IconArrowLeftBracketRightLine,
@@ -19,7 +18,7 @@ import {
   IconHouseFill,
   IconPlusLine,
 } from '@karrotmarket/react-monochrome-icon'
-import { HStack, Icon, Text, VStack, useBreakpointValue } from '@seed-design/react'
+import { HStack, Icon, Text, VStack } from '@seed-design/react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { Avatar } from 'seed-design/ui/avatar'
@@ -143,8 +142,6 @@ function Shell() {
   const { pathname, hash } = useLocation()
   const navType = useNavigationType()
   const { domain } = useDomain()
-  // 768px 미만(휴대폰)에서는 탭을 위쪽에 가로로 붙인다.
-  const horizontal = useBreakpointValue({ base: true, md: false }) ?? false
   const tab = PAPERS.find((p) => pathname.startsWith(p.path))
   const paper = tab ?? NEUTRAL
 
@@ -175,13 +172,8 @@ function Shell() {
           <UserMenu />
         </header>
 
-        <div className="a2d-folder" data-orientation={horizontal ? 'horizontal' : 'vertical'}>
-          <IndexTabs
-            tabs={PAPERS}
-            activeKey={tab?.key ?? null}
-            orientation={horizontal ? 'horizontal' : 'vertical'}
-            onSelect={(t) => navigate(t.path)}
-          />
+        <div className="a2d-folder">
+          <IndexTabs tabs={PAPERS} activeKey={tab?.key ?? null} onSelect={(t) => navigate(t.path)} />
           {/* 내용 영역: 바탕은 고른 종이 색(SheetWash), 글자색은 그 종이의 ink */}
           <main className="a2d-sheet" data-paper={paper.key} style={{ '--a2d-ink': ink } as CSSProperties}>
             <SheetWash id={paper.key} fill={paper.fill} onCover={() => setInk(paper.ink)} />
