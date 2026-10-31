@@ -36,7 +36,8 @@ STATUS_PATHS = (("/actuator/env", "env"), ("/server-status", "status"), ("/phpin
 BACKUP_PATHS = ("/backup.zip", "/backup.sql", "/db.sql", "/dump.sql")
 CONFIG_PATHS = (("/.env", "env"), ("/.git/HEAD", "git"), ("/.git/config", "git"))
 API_DOC_PATHS = ("/openapi.json", "/swagger.json", "/swagger", "/docs", "/api-docs")
-ADMIN_PATHS = ("/admin", "/admin/", "/wp-admin/", "/phpmyadmin/")
+# 흔한 관리자 로그인 경로(#18). /wp-admin/은 로그인 화면으로 넘기기만 해서(302) 로그인 화면 주소를 직접 본다.
+ADMIN_PATHS = ("/admin", "/admin/", "/wp-login.php", "/phpmyadmin/")
 
 # 비밀키 앞부분 형태(#12). 값은 저장하지 않고 '있다'만 센다.
 SECRET_PATTERNS = {
@@ -120,12 +121,15 @@ class LiveEngine(Engine):
             done = 0
             server_wide_host = primary_host or next((a.host for a in assets
                                                      if a.role in ("api", "admin")), None)
-            admin_host_exists = any(a.role == "admin" for a in assets)
-            for a in assets:
+            # 관리자 하위 도메인을 먼저 본다. 거기서 로그인 화면이 열려 있으면 www의 관리자 경로는 다시 세지 않고,
+            # 하위 도메인이 막혀 있으면 www 경로를 본다(하위 도메인이 '있다'가 아니라 '열려 있다'가 기준).
+            admin_login_found = False
+            for a in sorted(assets, key=lambda x: x.role != "admin"):
                 ctx.budget.check()
-                await self._check_asset(ctx, http, a, primary_host=primary_host,
-                                        run_server_wide=a.host == server_wide_host,
-                                        admin_host_exists=admin_host_exists)
+                found = await self._check_asset(ctx, http, a, primary_host=primary_host,
+                                                run_server_wide=a.host == server_wide_host,
+                                                admin_login_found=admin_login_found)
+                admin_login_found = admin_login_found or found
                 done += 1
                 ctx.set_stage("checking", "노출을 점검하는 중", done, total + 1)
             await self._check_mail(ctx)  # #32 (DNS)
@@ -232,37 +236,40 @@ class LiveEngine(Engine):
 
     async def _check_asset(self, ctx: EngineContext, http: HttpClient, a: Asset,
                            *, primary_host: str | None, run_server_wide: bool,
-                           admin_host_exists: bool = False) -> None:
+                           admin_login_found: bool = False) -> bool:
+        """자산 하나를 점검한다. 관리자 로그인 화면(#18)을 찾았으면 True."""
         if a.role == "external":
-            return  # #4 식별만. 3자 서비스는 점검하지 않는다
+            return False  # #4 식별만. 3자 서비스는 점검하지 않는다
         if a.role == "dangling":
             await self._check_dangling(ctx, http, a)
-            return
+            return False
         if a.role == "cloud":
             await self._check_bucket(ctx, http, a)  # #14
-            return
+            return False
         if a.role == "mail":
-            return
+            return False
+        admin_found = False
 
         if a.role == "web" and a.host == primary_host:  # 대표 웹 자산에서만(꼭짓점·www 중복 방지)
             await self._check_files(ctx, http, a)       # #8 #9 #10
             await self._check_error_page(ctx, http, a)  # #11
             await self._check_frontend(ctx, http, a)    # #12 #13 #24
             await self._check_status_pages(ctx, http, a)  # #20
-            if not admin_host_exists:  # admin 하위 도메인이 따로 있으면 거기서 한 번만 본다
-                await self._check_admin_path(ctx, http, a)  # #18 (www/admin)
+            if not admin_login_found:  # 관리자 하위 도메인에서 이미 찾았으면 한 번만 센다
+                admin_found = await self._check_admin_path(ctx, http, a)  # #18 (www/admin 등)
             await self._check_cookie(ctx, http, a)      # #31
         if a.role == "api":
             await self._check_unauth_api(ctx, http, a)  # #16
             await self._check_api_docs(ctx, http, a)    # #17
             await self._check_cors(ctx, http, a)        # #21
         if a.role == "admin":
-            await self._check_admin_host(ctx, http, a)  # #18
+            admin_found = await self._check_admin_host(ctx, http, a)  # #18
         if a.role == "dev":
             await self._check_dev_server(ctx, http, a)  # #19
 
         if run_server_wide and a.role in ("web", "api", "admin"):
             await self._check_server_wide(ctx, http, a)  # #23 #25 #30 #27 #28
+        return admin_found
 
     # ---------------------------------------------------------------- #8 #9 #10
     async def _check_files(self, ctx, http, a: Asset) -> None:
@@ -337,17 +344,20 @@ class LiveEngine(Engine):
                 self._add(ctx, a, 20, "status", f"GET {r.url}", f"{path} 공개, 서버 상태·통계 노출")
 
     # ---------------------------------------------------------------- #18
-    async def _check_admin_path(self, ctx, http, a: Asset) -> None:
-        for path in ("/admin", "/admin/"):
+    async def _check_admin_path(self, ctx, http, a: Asset) -> bool:
+        for path in ADMIN_PATHS:
             r = await http.get(f"https://{a.host}{path}")
             if r is not None and r.status == 200 and _is_login(r.text):
                 self._add(ctx, a, 18, "basic", f"GET {r.url}", f"{path}에 관리자 로그인 화면 노출")
-                return
+                return True
+        return False
 
-    async def _check_admin_host(self, ctx, http, a: Asset) -> None:
+    async def _check_admin_host(self, ctx, http, a: Asset) -> bool:
         r = await http.get(f"https://{a.host}/")
         if r is not None and r.status == 200 and _is_login(r.text):
             self._add(ctx, a, 18, "basic", f"GET {r.url}", "관리자 로그인 화면이 외부에 노출")
+            return True
+        return False
 
     # ---------------------------------------------------------------- #19
     async def _check_dev_server(self, ctx, http, a: Asset) -> None:
