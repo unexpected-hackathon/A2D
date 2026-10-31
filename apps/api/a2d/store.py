@@ -93,6 +93,22 @@ class Store:
     def save_domain(self, data: dict) -> None:
         self._q("UPDATE domains SET data = ? WHERE domain_id = ?", (_dump(data), data["domain_id"]))
 
+    def delete_domain(self, domain_id: str) -> list[str]:
+        """도메인과 딸린 모든 기록(점검·자산·발견·감사·조치 가이드)을 지운다. 지운 점검 ID 목록을 돌려준다."""
+        with self._lock:
+            scan_ids = [r[0] for r in self._db.execute(
+                "SELECT scan_id FROM scans WHERE domain_id = ?", (domain_id,)).fetchall()]
+            for sid in scan_ids:
+                self._db.execute("DELETE FROM scan_assets WHERE scan_id = ?", (sid,))
+                self._db.execute("DELETE FROM findings WHERE scan_id = ?", (sid,))
+                self._db.execute("DELETE FROM audit WHERE scan_id = ?", (sid,))
+                self._db.execute("DELETE FROM reports WHERE scan_id = ?", (sid,))
+            self._db.execute("DELETE FROM scans WHERE domain_id = ?", (domain_id,))
+            self._db.execute("DELETE FROM assets WHERE domain_id = ?", (domain_id,))
+            self._db.execute("DELETE FROM finding_keys WHERE domain_id = ?", (domain_id,))
+            self._db.execute("DELETE FROM domains WHERE domain_id = ?", (domain_id,))
+            return scan_ids
+
     # ------------------------------------------------------------ 자산 ID
     # 같은 도메인·호스트면 점검이 바뀌어도 유지하고, 에이전트 도구가 asset_id만 받으므로 서버 전체에서 유일하게 매긴다.
 

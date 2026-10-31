@@ -178,6 +178,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     async def verify_domain(domain_id: str, s: Service = Depends(svc)):
         return await s.verify_domain(domain_id)
 
+    @r.delete("/domains/{domain_id}", status_code=204)
+    async def delete_domain(domain_id: str, s: Service = Depends(svc)):
+        s.delete_domain(domain_id)
+        return Response(status_code=204)
+
     # ------------------------------------------------------------ 점검
 
     @r.post("/domains/{domain_id}/scans", status_code=202)

@@ -84,6 +84,7 @@ API는 영문 코드를 쓰고, 화면은 오른쪽 한국어 표기를 쓴다.
 | POST | `/domains` | 도메인 등록, TXT 값 발급 | 1 등록 | FR-01 | P0 |
 | GET | `/domains/{domain_id}` | 도메인과 소유권 상태 | 1 등록 | FR-01 | P0 |
 | POST | `/domains/{domain_id}/verify` | TXT 레코드 확인 | 1 등록 | FR-01 | P0 |
+| DELETE | `/domains/{domain_id}` | 도메인과 점검 기록 삭제 | 1 등록 | FR-01 | P1 |
 | POST | `/domains/{domain_id}/scans` | 점검·재점검 시작 | 1, 2 | FR-09 | P0 |
 | GET | `/scans/{scan_id}` | 점검 진행 상태 | 2 대시보드 | FR-09 | P0 |
 | POST | `/scans/{scan_id}/stop` | 점검 중지 | 2 대시보드 | NFR-03 | P0 |
@@ -245,6 +246,14 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 개발·시연 설정(`A2D_VERIFY_MODE=trust`)에서는 TXT를 조회하지 않고 모든 도메인이 바로 `verified`가 된다. 소유권을 확인하지 않으므로 운영자가 직접 관리하는 도메인만 등록해 점검한다.
 
 실패하면 `verify_status`가 `failed`이고 `reason`에 이유가 온다. 예: `"TXT 레코드를 찾지 못했습니다. DNS 반영에 몇 분이 걸릴 수 있습니다."` 실패해도 HTTP 상태는 200이다.
+
+### DELETE `/domains/{domain_id}`
+
+도메인과 그 도메인에 딸린 모든 기록(점검, 자산, 발견, 감사 기록, 조치 가이드)을 지운다. 잘못 등록했거나 더는 점검하지 않는 도메인을 정리할 때 쓴다.
+
+성공하면 `204 No Content`이고 본문은 없다. 없는 도메인이면 `404 NOT_FOUND`다.
+
+진행 중인 점검이 있으면 지우지 않고 `409 SCAN_IN_PROGRESS`를 돌려준다(`scan_id` 포함). 먼저 `POST /scans/{scan_id}/stop`으로 점검을 멈춘 뒤 다시 시도한다.
 
 ## 5. 점검
 

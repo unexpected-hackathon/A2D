@@ -154,6 +154,18 @@ class Service:
     def list_domains(self) -> list[dict]:
         return [self.domain_api(d) for d in self.store.list_domains()]
 
+    def delete_domain(self, domain_id: str) -> None:
+        self._domain_or_404(domain_id)
+        running = self._running(domain_id)
+        if running:
+            raise ApiError(409, "SCAN_IN_PROGRESS",
+                           "진행 중인 점검이 있어 도메인을 삭제할 수 없습니다. 점검을 멈춘 뒤 다시 시도해 주세요.",
+                           scan_id=running["scan_id"])
+        for sid in self.store.delete_domain(domain_id):
+            self._live.pop(sid, None)
+            self._budgets.pop(sid, None)
+            self._tasks.pop(sid, None)
+
     async def _lookup_txt(self, name: str) -> list[str] | None:
         """TXT 값 목록. 이름이 없으면 [], 조회 자체가 실패하면 None."""
         if self.s.dns_servers:
