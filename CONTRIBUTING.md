@@ -21,7 +21,7 @@ main ──●────────────●─────────
    git push -u origin feat/api-domain-verify
    ```
 4. **PR을 연다.** 작업 중이면 Draft PR로 열어 진행 상황을 공유한다. 본문은 PR 템플릿을 채운다.
-5. **리뷰를 받는다.** 다른 팀원 1명의 승인을 받는다. 리뷰어가 30분 안에 답하지 못하면 작성자가 머지하고, PR에 그 사실을 한 줄 남긴다.
+5. **리뷰를 받는다.** 다른 팀원 1명의 승인을 받아야 머지 버튼이 열린다. 관리자도 예외가 없으니, 급하면 디스코드에서 리뷰를 바로 요청한다.
 6. **Squash merge로 합친다.** PR 하나가 `main`의 커밋 하나가 되고, PR 제목이 그 커밋 메시지가 된다.
 7. **머지한 브랜치는 지운다.**
 
@@ -111,17 +111,19 @@ docs(docs): PRD에 재점검 흐름 추가
 - **피공격 서버(`target/`)는 시연 환경 밖에 띄우지 않는다.** 결함을 일부러 심은 서버다. 자세한 규칙은 [target/README.md](target/README.md)를 본다.
 - **새 외부 자원은 README의 외부 자원 표에 적는다.** 라이브러리, 모델, 데이터셋, 외부 API 모두 해당한다.
 
-## 6. 저장소 설정 (관리자 1회)
+## 6. 저장소 설정
 
-GitHub 저장소 Settings에서 아래를 켠다.
+아래 설정이 적용돼 있다. 바꿀 때는 팀에 먼저 알리고 이 절도 함께 고친다.
 
-- **Branches → Branch protection rule (`main`)**
-  - Require a pull request before merging, Required approvals: 1
-  - Do not allow bypassing the above settings 해제 (30분 규칙으로 작성자 머지를 허용하려면 관리자 우회를 남겨 둔다)
-  - Allow force pushes, Allow deletions 끄기
-- **General → Pull Requests**
-  - Allow squash merging만 켜고, Default commit message는 "Pull request title"
-  - Automatically delete head branches 켜기
+- **Settings → Rules → Rulesets → `protect-main`** (기본 브랜치 `main`에 적용, 예외 없음)
+  - Require a pull request before merging: 승인 1명, 머지 방식 Squash만
+  - Block force pushes
+  - Restrict deletions
+- **Settings → General → Pull Requests**
+  - Squash merging만 허용, 커밋 제목은 PR 제목
+  - 머지한 브랜치 자동 삭제
+- **Settings → Webhooks**
+  - 이슈, 이슈 댓글, PR, PR 리뷰 알림을 팀 디스코드 채널로 보낸다. 웹훅 주소는 비밀값이라 저장소에 적지 않는다
 
 ## 7. 제출
 
