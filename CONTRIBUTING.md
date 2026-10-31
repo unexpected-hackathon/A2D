@@ -27,6 +27,33 @@ main ──●────────────●─────────
 
 `main`이 앞서 나가 충돌이 나면 내 브랜치에서 `git pull --rebase origin main`으로 맞춘 뒤 다시 push한다(`--force-with-lease`). 남과 같이 쓰는 브랜치는 rebase하지 않는다.
 
+### 워크트리는 필요할 때만
+
+한 번에 한 작업만 하면 `git switch`로 충분하다. 아래 경우에만 `git worktree`로 폴더를 하나 더 만든다.
+
+- 작업 도중 급한 수정이나 팀원 PR 확인 때문에 다른 브랜치를 열어야 할 때 (`stash` 대신)
+- 두 브랜치를 동시에 실행해야 할 때 (예: `apps/api` 새 기능과 `target/` 결함을 함께 띄워 점검 시험)
+- AI 에이전트 여러 개를 병렬로 돌릴 때 (에이전트마다 워크트리 하나)
+
+워크트리는 저장소 바깥 `../A2D-worktrees/`에 브랜치 이름으로 만든다.
+
+```bash
+git fetch origin
+git worktree add ../A2D-worktrees/fix-api-score -b fix/api-score origin/main
+cd ../A2D-worktrees/fix-api-score
+# 작업, 커밋, push, PR
+
+# PR이 머지되면 정리
+cd -
+git worktree remove ../A2D-worktrees/fix-api-score
+git branch -D fix/api-score
+```
+
+- `.env`, `node_modules`, `.venv`는 워크트리끼리 공유되지 않는다. 새 워크트리에서 다시 복사·설치한다.
+- 같은 브랜치를 두 워크트리에서 동시에 열 수 없다.
+- 여러 워크트리에서 서비스를 함께 띄우면 포트가 겹치지 않게 한다.
+- 머지한 워크트리는 바로 지운다. `git worktree list`로 남은 것을 확인한다.
+
 ## 2. 브랜치 이름
 
 ```
