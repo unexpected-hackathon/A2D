@@ -59,6 +59,13 @@ export interface VerifyResult {
 }
 
 // ---- 점검 (5장) ----
+// 추가 점검(Attack 에이전트, FR-04)의 상태. message는 서버가 정한 화면 문장이다.
+export type AttackStatus = 'pending' | 'running' | 'done' | 'skipped' | 'failed' | 'stopped'
+export interface AttackState {
+  status: AttackStatus
+  reason: string | null
+  message: string | null
+}
 export interface ScanStarted {
   scan_id: string
   status: ScanStatus
@@ -82,6 +89,8 @@ export interface Scan {
   safety_score: number | null
   grade: Grade | null
   error_message: string | null
+  // 이 필드가 생기기 전의 점검·백엔드는 null이거나 없다
+  attack?: AttackState | null
 }
 
 // ---- 대시보드 (6장) ----
@@ -106,7 +115,7 @@ export interface Alert {
 export interface Summary {
   domain_id: string
   domain: string
-  latest_scan: { scan_id: string; finished_at: string; status: ScanStatus } | null
+  latest_scan: { scan_id: string; finished_at: string; status: ScanStatus; attack?: AttackState | null } | null
   running_scan_id: string | null
   safety_score: number
   grade: Grade
