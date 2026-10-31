@@ -7,6 +7,7 @@
 //   4) 자산 중요도를 고치면 1)·2)를 다시 불러와 점수가 바뀐다
 //   5) 재점검: 점수 카드 버튼 → useScan().start() → 점검이 끝나 finishedVersion이 오르면 1)·2)를 다시 부른다
 //   6) 새 노출 알림(2-4): summary.alerts
+//   7) 추가 점검을 건너뛰었으면 한 줄 알림: summary.latest_scan.attack
 
 import { IconBellFill } from '@karrotmarket/react-monochrome-icon'
 import { Skeleton, VStack } from '@seed-design/react'
@@ -17,6 +18,7 @@ import { ResultSection } from 'seed-design/ui/result-section'
 import { api } from '../api/endpoints'
 import type { Asset } from '../api/types'
 import { AssetList } from '../components/AssetList'
+import { AttackNotice } from '../components/AttackNotice'
 import { FindingList } from '../components/FindingList'
 import { PageHeader } from '../components/PageHeader'
 import { ScoreCard } from '../components/ScoreCard'
@@ -100,6 +102,7 @@ function Dashboard({ domainId }: { domainId: string }) {
 
       {summary.data?.latest_scan && (
         <>
+          <AttackNotice attack={summary.data.latest_scan.attack} />
           {/* 내용 영역 폭 720px 이상에서 점수 카드 : 오늘 할 일 = 2 : 3 (global.css .a2d-grid--hero) */}
           <div className="a2d-grid a2d-grid--hero">
             <ScoreCard summary={summary.data} onRescan={() => void scan.start()} scanning={scan.isRunning} />

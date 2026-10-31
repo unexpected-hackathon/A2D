@@ -231,6 +231,12 @@ function scanResponse(scan: MockScan): Scan {
     safety_score: score?.safety ?? null,
     grade: score?.grade ?? null,
     error_message: null,
+    // 가짜 응답은 감사 기록에 Attack 에이전트 도구 호출이 있으므로 추가 점검을 한 것으로 둔다
+    attack: {
+      status: finished || st.status === 'scoring' || st.status === 'reporting' ? 'done' : st.status === 'agent' ? 'running' : 'pending',
+      reason: null,
+      message: null,
+    },
   }
 }
 
@@ -428,7 +434,12 @@ route('GET', '/domains/([^/]+)/summary', ([id]) => {
   const summary: Summary = {
     domain_id: id,
     domain: domain.domain,
-    latest_scan: { scan_id: latest.scan_id, finished_at: kst(scanStatus(latest).finishedAt!), status: scanStatus(latest).status },
+    latest_scan: {
+      scan_id: latest.scan_id,
+      finished_at: kst(scanStatus(latest).finishedAt!),
+      status: scanStatus(latest).status,
+      attack: { status: 'done', reason: null, message: null },
+    },
     running_scan_id: running?.scan_id ?? null,
     safety_score: score.safety,
     grade: score.grade,
