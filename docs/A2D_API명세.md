@@ -80,6 +80,7 @@ API는 영문 코드를 쓰고, 화면은 오른쪽 한국어 표기를 쓴다.
 | GET | `/auth/me` | 현재 로그인한 사용자 | 공통 | | P0 |
 | GET | `/health` | 서버·LLM 상태 | 공통 | FR-11 | P0 |
 | GET | `/checks` | 점검 항목 34개 목록 | 공통 | FR-03 | P0 |
+| GET | `/domains` | 등록한 도메인 목록 | 0 로그인 | FR-01 | P0 |
 | POST | `/domains` | 도메인 등록, TXT 값 발급 | 1 등록 | FR-01 | P0 |
 | GET | `/domains/{domain_id}` | 도메인과 소유권 상태 | 1 등록 | FR-01 | P0 |
 | POST | `/domains/{domain_id}/verify` | TXT 레코드 확인 | 1 등록 | FR-01 | P0 |
@@ -212,6 +213,14 @@ API는 영문 코드를 쓰고, 화면은 오른쪽 한국어 표기를 쓴다.
   "verified_at": null,
   "created_at": "2026-10-31T14:00:00+09:00"
 }
+```
+
+### GET `/domains`
+
+등록한 도메인 목록이다. 로그인 직후 등록 화면과 대시보드 중 어디로 갈지 고를 때 쓴다. 항목은 `POST /domains`의 응답과 같은 형식이고, 없으면 빈 배열이다.
+
+```json
+{ "items": [ { "domain_id": "DOM-1", "domain": "triply.example", "verify_status": "verified", "...": "..." } ] }
 ```
 
 ### GET `/domains/{domain_id}`
@@ -608,7 +617,7 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 ### 0. 로그인
 
 1. 화면이 처음 열리면 `GET /auth/me`. `401`이면 로그인 화면으로 간다.
-2. 이메일·비밀번호를 받아 `POST /auth/login`. 성공하면 도메인이 없을 때 등록, 있을 때 대시보드로 간다.
+2. 이메일·비밀번호를 받아 `POST /auth/login`. 성공하면 `GET /domains`로 도메인이 없을 때 등록, 있을 때 대시보드로 간다.
 3. 어느 API든 `401 UNAUTHENTICATED`가 오면 로그인 화면으로 보내고 "다시 로그인해 주세요"를 보여 준다.
 4. 머리글의 "로그아웃"은 `POST /auth/logout` 뒤 로그인 화면으로 간다.
 
