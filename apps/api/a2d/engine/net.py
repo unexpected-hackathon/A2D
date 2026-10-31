@@ -27,7 +27,7 @@ log = logging.getLogger("a2d.engine.net")
 USER_AGENT = "A2D-Scanner/1.0 (+external-exposure check; read-only; https://github.com/unexpected-hackathon/A2D)"
 REQUEST_TIMEOUT = 10.0
 HOST_MIN_INTERVAL = 0.5  # 대상 호스트당 초당 2건
-MAX_BODY_BYTES = 262144  # 응답 본문은 앞부분만 읽는다(개인정보 대량 적재 방지)
+MAX_BODY_BYTES = 262144  # 응답을 받은 뒤 앞부분만 본다(개인정보 대량 적재·거대 응답 방지)
 
 
 @dataclass
@@ -118,9 +118,11 @@ class HttpClient:
 
 
 def open_http_client(verify: bool | str = False) -> httpx.AsyncClient:
-    """점검용 httpx 클라이언트. 시연 대상은 자체 서명 인증서(#28)를 쓸 수 있어 기본은 검증을 끈다.
+    """점검용 httpx 클라이언트. verify는 호출부(A2D_CA_BUNDLE)가 정한다.
 
-    시연 CA를 믿게 하려면 CA 묶음 경로를 verify로 넘긴다(target/README.md). TLS 유효성은 #28이 따로 본다.
+    기본은 검증을 끈다. 외부 노출 점검은 자체 서명·만료 인증서를 쓰는 서버도 내용을 읽어야 하고
+    (그런 서버가 바로 점검 대상이다), 인증서 유효성은 #28이 따로 본다(target/README "결함 상태의 TLS").
+    운영자가 CA 묶음 경로를 넣으면 그 CA로 검증한다. 이때 자체 서명 대상은 내용 조회가 실패하고 #28만 남는다.
     """
     return httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT,
                              follow_redirects=False, verify=verify)

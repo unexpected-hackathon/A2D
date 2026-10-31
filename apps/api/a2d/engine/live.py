@@ -12,6 +12,8 @@ apps/api의 시연용 가짜 응답이 맡고, #7·#15·#22·#29는 2차, #34는
 
 from __future__ import annotations
 
+import asyncio
+import datetime as dt
 import logging
 import re
 from dataclasses import dataclass, field
@@ -49,7 +51,7 @@ SECRET_PATTERNS = {
 }
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE = re.compile(r"01[016789][-\s]?\d{3,4}[-\s]?\d{4}")
+_PHONE = re.compile(r"(?<!\d)01[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)")  # 숫자 경계: 주문번호·타임스탬프 오탐 방지
 _PII_KEYS = {"email", "phone", "mobile", "tel", "name", "username", "birth", "birthday",
              "rrn", "ssn", "resident", "address", "resume", "applicant"}
 # 목록·파일 이름이 민감해 보이는지(#10·#14)
@@ -97,7 +99,7 @@ class LiveEngine(Engine):
         self._interval = host_min_interval
 
     async def run(self, ctx: EngineContext) -> None:
-        client = self._client or open_http_client()
+        client = self._client or open_http_client(self.s.ca_bundle or False)
         interval = self._interval if self._interval is not None else None
         http = HttpClient(ctx.budget, client) if interval is None else \
             HttpClient(ctx.budget, client, host_min_interval=interval)
@@ -138,10 +140,11 @@ class LiveEngine(Engine):
         domain = ctx.domain.lower().strip(".")
         found: dict[str, Asset] = {}
 
-        # #1 하위 도메인 찾기 + 꼭짓점 도메인
+        # #1 하위 도메인 찾기 + 꼭짓점 도메인. DNS는 블로킹이라 스레드로 보내고, 사이사이 중지를 확인한다.
         for host in [domain] + [f"{w}.{domain}" for w in SUBDOMAIN_WORDS]:
-            cname = self._dns.cname(host)
-            addrs = self._dns.a(host)
+            ctx.budget.check()
+            cname = await asyncio.to_thread(self._dns.cname, host)
+            addrs = await asyncio.to_thread(self._dns.a, host)
             if not cname and not addrs:
                 continue
             found[host] = self._classify(host, domain, cname)
@@ -172,8 +175,11 @@ class LiveEngine(Engine):
                 if 2 not in found[host].found_by:
                     found[host].found_by.append(2)
                 continue
-            if host.endswith("." + domain) and (self._dns.a(host) or self._dns.cname(host)):
-                found[host] = self._classify(host, domain, self._dns.cname(host))
+            if not host.endswith("." + domain):
+                continue
+            cname = await asyncio.to_thread(self._dns.cname, host)
+            if cname or await asyncio.to_thread(self._dns.a, host):
+                found[host] = self._classify(host, domain, cname)
                 found[host].found_by.append(2)
 
         # #14 클라우드 저장소: 우리 사이트가 가리키는 버킷만 자산으로 등록한다(이름 추측 금지).
@@ -375,7 +381,7 @@ class LiveEngine(Engine):
     async def _check_api_docs(self, ctx, http, a: Asset) -> None:
         for path in API_DOC_PATHS:
             r = await http.get(f"https://{a.host}{path}")
-            if r is not None and r.status == 200:
+            if r is not None and r.status == 200 and _is_api_doc(r):
                 self._add(ctx, a, 17, "basic", f"GET {r.url}", f"{path} API 설명서 공개")
                 return
 
@@ -434,7 +440,7 @@ class LiveEngine(Engine):
             self._check_version(ctx, a, r)   # #23 #25
             self._check_headers(ctx, a, r)   # #30
         await self._check_redirect(ctx, http, a)  # #27
-        self._check_tls(ctx, a)                    # #28
+        await self._check_tls(ctx, a)              # #28
 
     def _check_version(self, ctx, a: Asset, r: Fetched) -> None:
         server = r.header("server") or ""
@@ -465,12 +471,10 @@ class LiveEngine(Engine):
         if not redirected and r.status == 200:
             self._add(ctx, a, 27, "basic", f"GET http://{a.host}/", "HTTP 접속을 HTTPS로 옮기지 않음")
 
-    def _check_tls(self, ctx, a: Asset) -> None:
-        info = self._tls.inspect(a.host)
+    async def _check_tls(self, ctx, a: Asset) -> None:
+        info = await asyncio.to_thread(self._tls.inspect, a.host)  # TLS 핸드셰이크는 블로킹
         if info.error or info.not_after is None:
             return
-        import datetime as dt
-
         days = (info.not_after - dt.datetime.now(dt.timezone.utc)).days
         if days < 0:
             situation = "expired"
@@ -491,8 +495,8 @@ class LiveEngine(Engine):
     # ---------------------------------------------------------------- #32
     async def _check_mail(self, ctx: EngineContext) -> None:
         domain = ctx.domain.lower().strip(".")
-        spf = _find_txt(self._dns.txt(domain), "v=spf1")
-        dmarc = _find_txt(self._dns.txt(f"_dmarc.{domain}"), "v=dmarc1")
+        spf = _find_txt(await asyncio.to_thread(self._dns.txt, domain), "v=spf1")
+        dmarc = _find_txt(await asyncio.to_thread(self._dns.txt, f"_dmarc.{domain}"), "v=dmarc1")
         spf_enforces = spf is not None and ("-all" in spf or "~all" in spf)
         dmarc_enforces = dmarc is not None and ("p=quarantine" in dmarc.lower() or "p=reject" in dmarc.lower())
         if dmarc_enforces and not spf_enforces:
@@ -550,9 +554,29 @@ def _abs(src: str) -> str:
 
 
 def _looks_like_file(r: Fetched) -> bool:
+    """내려받기용 파일 응답인지(#8). HTML(모르는 경로를 index로 돌려주는 SPA)은 파일로 보지 않는다."""
     ct = r.header("content-type") or ""
-    return ("zip" in ct or "sql" in ct or "octet-stream" in ct or "application" in ct
-            or len(r.text) > 0)
+    if "html" in ct:
+        return False
+    if "zip" in ct or "sql" in ct or "octet-stream" in ct or "x-gzip" in ct or "gzip" in ct:
+        return True
+    head = r.text[:64].lstrip().upper()
+    magic = ("PK\x03\x04", "SQLITE", "-- ", "/*", "INSERT INTO", "CREATE TABLE", "DROP TABLE")
+    return r.text[:8].startswith("PK\x03\x04") or any(head.startswith(m.upper()) for m in magic)
+
+
+def _is_api_doc(r: Fetched) -> bool:
+    """실제 API 설명서인지(#17). 일반 /docs 페이지가 걸리지 않게 OpenAPI JSON이나 UI 표식을 본다."""
+    import json
+
+    if "json" in (r.header("content-type") or ""):
+        try:
+            obj = json.loads(r.text)
+        except ValueError:
+            return False
+        return isinstance(obj, dict) and bool({"openapi", "swagger", "paths"} & set(obj))
+    low = r.text.lower()
+    return "swagger-ui" in low or "redoc" in low or "swagger.json" in low or "openapi.json" in low
 
 
 def _is_login(text: str) -> bool:
@@ -567,26 +591,35 @@ def _secret_kinds(text: str) -> list[str]:
 
 
 def _pii_shape(r: Fetched) -> tuple[list[str], int | None]:
+    """응답이 개인정보 형태인지(#16). JSON 응답만 본다. HTML(푸터 메일 등)은 API 응답으로 보지 않는다.
+
+    오탐이 가장 비싼 항목(확인됨·C=5 → 100)이라, 개인정보 필드가 있거나 값 형태가 2종 이상일 때만
+    pii로 본다. 값 하나(예: 안내용 메일 하나)로는 켜지 않는다.
+    """
     import json
 
+    if "json" not in (r.header("content-type") or ""):
+        return [], None
+    try:
+        obj = json.loads(r.text)
+    except ValueError:
+        return [], None
     body = r.text
-    kinds: list[str] = []
+    value_kinds: list[str] = []
     if _EMAIL.search(body):
-        kinds.append("이메일")
+        value_kinds.append("이메일")
     if _PHONE.search(body):
-        kinds.append("전화번호")
-    count = None
-    if "json" in (r.header("content-type") or ""):
-        try:
-            obj = json.loads(body)
-        except ValueError:
-            obj = None
-        items = _items_of(obj)
-        if items is not None:
-            count = len(items)
-            keys = {str(k).lower() for it in items[:5] if isinstance(it, dict) for k in it}
-            if keys & _PII_KEYS and "개인정보 필드" not in kinds:
-                kinds.append("개인정보 필드")
+        value_kinds.append("전화번호")
+    items = _items_of(obj)
+    count = len(items) if items is not None else None
+    has_field = False
+    if items is not None:
+        keys = {str(k).lower() for it in items[:5] if isinstance(it, dict) for k in it}
+        has_field = bool(keys & _PII_KEYS)
+    # 강한 근거: 개인정보 필드가 있거나, 값 형태가 2종 이상
+    if not (has_field or len(value_kinds) >= 2):
+        return [], count
+    kinds = value_kinds + (["개인정보 필드"] if has_field else [])
     return kinds, count
 
 

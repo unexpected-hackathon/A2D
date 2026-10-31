@@ -246,6 +246,46 @@ def found(findings):
     return {(f.check_id, f.situation) for f in findings}
 
 
+# ------------------------------------------------------------------ 오탐 방지(리뷰 반영)
+
+def _fetched(status=200, text="", ctype="application/json", url="https://api.jobnest.test/x"):
+    from a2d.engine.net import Fetched
+    return Fetched(url=url, status=status, headers={"content-type": ctype}, text=text, scheme="https")
+
+
+@pytest.mark.parametrize("text, ctype", [
+    (json.dumps({"order_id": "2024010123456789"}), "application/json"),   # 주문번호가 전화번호로 안 잡힘
+    (json.dumps({"ts": 1701012345678}), "application/json"),             # 타임스탬프
+    ("<footer>문의 support@jobnest.test</footer>", "text/html"),          # HTML 푸터 메일
+    (json.dumps({"items": [{"id": 1, "title": "백엔드"}]}), "application/json"),  # 개인정보 아님
+    (json.dumps({"contact": "support@jobnest.test"}), "application/json"),  # 메일 하나(필드 없음, 1종)
+])
+def test_pii_shape_no_false_positive(text, ctype):
+    from a2d.engine.live import _pii_shape
+    kinds, _ = _pii_shape(_fetched(text=text, ctype=ctype))
+    assert kinds == [], f"오탐: {kinds}"
+
+
+def test_pii_shape_detects_real_pii():
+    from a2d.engine.live import _pii_shape
+    kinds, count = _pii_shape(_fetched(text=json.dumps(APPLICANTS)))
+    assert "개인정보 필드" in kinds and count == 2
+
+
+def test_looks_like_file_rejects_spa_html():
+    from a2d.engine.live import _looks_like_file
+    assert _looks_like_file(_fetched(text="<html>index</html>", ctype="text/html")) is False
+    assert _looks_like_file(_fetched(text="PK\x03\x04....", ctype="application/zip")) is True
+    assert _looks_like_file(_fetched(text="-- MySQL dump\nINSERT INTO", ctype="text/plain")) is True
+
+
+def test_is_api_doc_requires_openapi_marker():
+    from a2d.engine.live import _is_api_doc
+    assert _is_api_doc(_fetched(text=json.dumps({"openapi": "3.0.0", "paths": {}}))) is True
+    assert _is_api_doc(_fetched(text="<html>사용 설명서</html>", ctype="text/html")) is False
+    assert _is_api_doc(_fetched(text="<html><div id='swagger-ui'></div></html>", ctype="text/html")) is True
+
+
 # ------------------------------------------------------------------ 결함 전부 켠 상태
 
 def test_all_defects_found():
