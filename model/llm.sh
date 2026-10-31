@@ -87,7 +87,7 @@ cmd_preflight() {
   local gpu
   if gpu="$(nvidia-smi --query-gpu=name,driver_version,memory.used,memory.total --format=csv,noheader 2>&1)"; then
     echo "$ok $gpu"
-    nvidia-smi | awk '/CUDA Version/ {print "  드라이버가 지원하는 " $(NF-2) " " $(NF-1)}' || true
+    nvidia-smi | awk '/CUDA Version/ {print "  드라이버가 지원하는 CUDA " $(NF-1)}' || true
     echo "  vLLM $VLLM_VERSION은 CUDA 13.0 런타임을 쓴다. 드라이버가 CUDA 13.0 이상을 지원해야 한다."
   else
     echo "$no GPU를 찾지 못했다 ($(echo "$gpu" | head -n 1 | cut -c1-80)) → nvidia-smi 결과와 서버명을 운영진에게 전달"
