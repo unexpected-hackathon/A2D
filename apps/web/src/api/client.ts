@@ -32,7 +32,7 @@ export type UnauthenticatedDetail = { expired: boolean }
 const PUBLIC_PATHS = new Set(['/health', '/auth/login', '/auth/logout'])
 let hadSession = false
 
-type Method = 'GET' | 'POST' | 'PATCH'
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE'
 
 export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const { status, data } = USE_MOCK

@@ -205,6 +205,52 @@ def test_not_found(client):
     assert client.get("/api/v1/findings/F-9999").status_code == 404
 
 
+# ---------------------------------------------------------------- 도메인 삭제 (FR-01)
+
+def test_delete_domain_removes_domain_and_scans(client):
+    """도메인을 지우면 그 도메인·점검·발견·조치 가이드가 모두 사라지고, 같은 이름을 새로 등록할 수 있다."""
+    assert client.delete("/api/v1/domains/DOM-1").status_code == 401  # 로그인 필요
+    login(client)
+    domain_id = setup_domain(client)
+    scan_id = client.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
+    assert wait_done(client, scan_id)["status"] == "done"
+    assert client.get(f"/api/v1/scans/{scan_id}/report").status_code == 200
+
+    assert client.delete(f"/api/v1/domains/{domain_id}").status_code == 204
+
+    assert client.get(f"/api/v1/domains/{domain_id}").status_code == 404
+    assert client.get("/api/v1/domains").json()["items"] == []
+    assert client.get(f"/api/v1/scans/{scan_id}").status_code == 404
+    assert client.get(f"/api/v1/scans/{scan_id}/report").status_code == 404
+    assert client.get(f"/api/v1/scans/{scan_id}/findings").status_code == 404
+
+    # 같은 도메인을 다시 등록하면 새 ID가 나온다(이전 기록은 남지 않는다)
+    again = client.post("/api/v1/domains", json={"domain": "jobnest.test"})
+    assert again.status_code == 201 and again.json()["domain_id"] != domain_id
+
+
+def test_delete_domain_not_found(client):
+    login(client)
+    r = client.delete("/api/v1/domains/DOM-9999")
+    assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
+
+
+def test_delete_domain_blocked_while_scanning(tmp_path):
+    """진행 중인 점검이 있으면 409로 막고, 점검을 멈추면 삭제된다."""
+    s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "db.sqlite3"),
+                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0.05)
+    with TestClient(create_app(s), headers={"Origin": ORIGIN}) as c:
+        login(c)
+        domain_id = setup_domain(c)
+        scan_id = c.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
+        r = c.delete(f"/api/v1/domains/{domain_id}")
+        assert r.status_code == 409
+        assert r.json()["error"]["code"] == "SCAN_IN_PROGRESS" and r.json()["error"]["scan_id"] == scan_id
+        c.post(f"/api/v1/scans/{scan_id}/stop")
+        assert c.delete(f"/api/v1/domains/{domain_id}").status_code == 204
+        assert c.get(f"/api/v1/domains/{domain_id}").status_code == 404
+
+
 # ---------------------------------------------------------------- PR #14 리뷰 회귀 테스트
 
 def test_stopped_scan_keeps_unchecked_findings(tmp_path):

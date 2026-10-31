@@ -57,6 +57,7 @@ export const api = {
     create: (domain: string) => request<Domain>('POST', '/domains', { domain }),
     get: (domainId: string) => request<Domain>('GET', `/domains/${domainId}`),
     verify: (domainId: string) => request<VerifyResult>('POST', `/domains/${domainId}/verify`),
+    remove: (domainId: string) => request<void>('DELETE', `/domains/${domainId}`),
     summary: (domainId: string) => request<Summary>('GET', `/domains/${domainId}/summary`),
     history: (domainId: string) =>
       request<ItemList<HistoryItem>>('GET', `/domains/${domainId}/history`),
