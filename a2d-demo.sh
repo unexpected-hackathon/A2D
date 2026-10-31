@@ -292,7 +292,8 @@ status_line() {
 
 status() {
   say "피공격 서버:"
-  (cd "$ROOT/target" && docker compose ps --format '  {{.Service}}  {{.State}}') || true
+  # docker compose가 형식 앞의 공백을 지우므로 들여쓰기는 sed로 붙인다
+  (cd "$ROOT/target" && docker compose ps --format '{{.Service}}  {{.State}}') | sed 's/^/  /' || true
   if curl -s -o /dev/null --max-time 2 "$(api_url)/health"; then
     say "백엔드: 동작 중 ($(api_url))"
     status_line
