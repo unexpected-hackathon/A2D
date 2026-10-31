@@ -47,3 +47,9 @@
 | --- | --- | --- |
 | Qwen3-8B | Attack·Defense 에이전트 LLM | Apache 2.0 |
 | vLLM | 모델 서빙 (OpenAI 호환 엔드포인트) | Apache 2.0 |
+| FastAPI 0.115.6 · Uvicorn 0.34.0 | 피공격 서버 앱 | MIT · BSD-3-Clause |
+| cryptography 44.0.0 | 피공격 서버 시연 인증서 생성 | Apache 2.0 · BSD |
+| nginx 1.27.4 (Docker 이미지) | 피공격 서버 TLS 프록시 | BSD-2-Clause |
+| CoreDNS 1.11.3 (Docker 이미지) | 피공격 서버 시연 DNS | Apache 2.0 |
+| Python 3.12 slim (Docker 이미지) | 피공격 서버 실행 환경 | PSF |
+| curl 8.11.1 (Docker 이미지) | 피공격 서버 응답 확인(`demo.sh check`) | curl 라이선스(MIT 계열) |

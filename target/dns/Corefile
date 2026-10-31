@@ -1,0 +1,37 @@
+# 시연 DNS. 영역 파일은 init이 /state/dns에 만들고, serial이 바뀌면 2초 안에 다시 읽는다.
+
+{$DEMO_DOMAIN}:53 {
+    file /state/dns/main.db {
+        reload 2s
+    }
+    log
+    errors
+}
+
+# 우리 DNS가 가리키는 외부 이름(#4, #6, #14)만 시연 프록시로 돌려준다.
+jobnest.atspartner.test:53 {
+    file /state/dns/booking.db {
+        reload 2s
+    }
+    errors
+}
+
+jobnest-promo.github.io:53 {
+    file /state/dns/pages.db {
+        reload 2s
+    }
+    errors
+}
+
+jobnest-resumes.s3.ap-northeast-2.amazonaws.com:53 {
+    file /state/dns/bucket.db {
+        reload 2s
+    }
+    errors
+}
+
+# 나머지 이름은 Docker 기본 DNS로 넘긴다(오프라인이면 실패해도 된다).
+.:53 {
+    forward . /etc/resolv.conf
+    errors
+}
