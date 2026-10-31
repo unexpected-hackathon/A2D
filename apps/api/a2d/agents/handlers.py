@@ -41,13 +41,14 @@ USER_AGENT = "A2D-Scanner/1.0 (+external-exposure check; read-only; https://gith
 
 REQUEST_TIMEOUT = 10.0  # 요청마다 10초 제한(상세설계 4절)
 HOST_MIN_INTERVAL = 0.5  # 대상 호스트당 초당 2건
-MAX_BODY_READ = 65536  # 응답 본문은 앞부분만 읽어 형식만 본다(개인정보 대량 적재 방지)
+MAX_BODY_READ = 65536  # 응답을 받은 뒤 앞부분만 본다(개인정보 대량 적재 방지)
 EVIDENCE_LIMIT = 200  # 가린 증거 길이 상한(NFR-05)
 
 # 개인정보 형태 판별(값은 저장하지 않고 '있다'만 센다)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-_PHONE = re.compile(r"01[016789][-\s]?\d{3,4}[-\s]?\d{4}")
-_RRN = re.compile(r"\b\d{6}[-\s]?[1-4]\d{6}\b")  # 주민등록번호 형태
+# 숫자 경계: 주문번호·타임스탬프가 전화번호·주민번호로 잘못 잡히지 않게 앞뒤를 본다.
+_PHONE = re.compile(r"(?<!\d)01[016789][-\s]?\d{3,4}[-\s]?\d{4}(?!\d)")
+_RRN = re.compile(r"(?<!\d)\d{6}[-\s]?[1-4]\d{6}(?!\d)")  # 주민등록번호 형태
 # 개인정보 성격의 필드 이름(응답이 JSON일 때). 값이 아니라 키만 본다.
 _PII_KEYS = {"email", "phone", "mobile", "tel", "name", "username", "birth", "birthday",
              "rrn", "ssn", "resident", "address", "resume", "applicant"}
@@ -87,7 +88,7 @@ class AttackProbe:
         b.requests_used += 1
         url = f"{self.scheme}://{host}{path}"
         try:
-            # 읽기 전용: GET만. 리다이렉트는 따라가지 않고(다른 호스트로 새지 않게) 본문은 앞부분만 읽는다.
+            # 읽기 전용: GET만. 리다이렉트는 따라가지 않는다(다른 호스트로 새지 않게).
             r = await self.client.get(url, headers={"User-Agent": USER_AGENT},
                                       timeout=REQUEST_TIMEOUT, follow_redirects=False)
         except httpx.HTTPError as e:
@@ -217,30 +218,36 @@ class AttackProbe:
 
     @classmethod
     def _pii_shape(cls, r: httpx.Response) -> tuple[list[str], int | None]:
-        """응답이 개인정보 형태인지. (검출한 종류 목록, 항목 수). 값 자체는 남기지 않는다."""
-        body = r.text[:MAX_BODY_READ]
-        kinds: list[str] = []
-        if _EMAIL.search(body):
-            kinds.append("이메일")
-        if _PHONE.search(body):
-            kinds.append("전화번호")
-        if _RRN.search(body):
-            kinds.append("주민등록번호")
+        """응답이 개인정보 형태인지(JSON만). (검출한 종류, 항목 수). 값 자체는 남기지 않는다.
 
-        count: int | None = None
+        #16은 확인됨·C=5라 오탐 비용이 가장 크다. JSON 응답만 보고(HTML 푸터 메일 제외),
+        개인정보 필드가 있거나 값 형태가 2종 이상일 때만 pii로 본다. 값 하나로는 켜지 않는다.
+        """
         ct = r.headers.get("content-type", "")
-        if "json" in ct:
-            try:
-                obj = r.json()
-            except (ValueError, json.JSONDecodeError):
-                obj = None
-            items = cls._items_of(obj)
-            if items is not None:
-                count = len(items)
-                keys = {str(k).lower() for it in items[:5] if isinstance(it, dict) for k in it}
-                if keys & _PII_KEYS and "개인정보 필드" not in kinds:
-                    kinds.append("개인정보 필드")
-        return kinds, count
+        if "json" not in ct:
+            return [], None
+        try:
+            obj = r.json()
+        except (ValueError, json.JSONDecodeError):
+            return [], None
+        body = r.text[:MAX_BODY_READ]
+        value_kinds: list[str] = []
+        if _EMAIL.search(body):
+            value_kinds.append("이메일")
+        if _PHONE.search(body):
+            value_kinds.append("전화번호")
+        if _RRN.search(body):
+            value_kinds.append("주민등록번호")
+
+        items = cls._items_of(obj)
+        count = len(items) if items is not None else None
+        has_field = False
+        if items is not None:
+            keys = {str(k).lower() for it in items[:5] if isinstance(it, dict) for k in it}
+            has_field = bool(keys & _PII_KEYS)
+        if not (has_field or len(value_kinds) >= 2):
+            return [], count
+        return value_kinds + (["개인정보 필드"] if has_field else []), count
 
     @staticmethod
     def _items_of(obj: Any) -> list | None:
@@ -271,8 +278,9 @@ def build_attack_handlers(ctx: EngineContext, client: httpx.AsyncClient, *,
 def open_client(verify: bool | str = False) -> httpx.AsyncClient:
     """점검용 httpx 클라이언트. 기본은 읽기 전용·식별 User-Agent·리다이렉트 비추적.
 
-    verify는 호출하는 쪽이 정한다. 시연 대상은 자체 서명 인증서(#28)를 쓸 수 있어 기본은 검증을 끈다.
-    시연 CA를 믿게 하려면 CA 묶음 경로를 넘긴다(target/README.md). 연결 설정의 최종 책임은 호출부에 있다.
+    verify는 호출부(A2D_CA_BUNDLE)가 정한다. 기본은 검증을 끈다. 외부 노출 점검은 자체 서명·만료
+    인증서를 쓰는 서버도 내용을 읽어야 하고(그런 서버가 점검 대상이다), 인증서 유효성은 #28이 따로 본다
+    (target/README "결함 상태의 TLS"). CA 묶음 경로를 주면 그 CA로 검증한다.
     """
     return httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT,
                              follow_redirects=False, verify=verify)

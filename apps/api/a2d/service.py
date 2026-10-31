@@ -341,7 +341,7 @@ class Service:
         """
         if not self.llm.configured or self.s.engine == "fixture":
             return
-        async with attack_handlers.open_client() as client:
+        async with attack_handlers.open_client(self.s.ca_bundle or False) as client:
             handlers = attack_handlers.build_attack_handlers(ctx, client)
             await agents.run_attack(self.llm, ctx, summary, handlers=handlers)
 

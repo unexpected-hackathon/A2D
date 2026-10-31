@@ -15,6 +15,29 @@ from a2d.agents.handlers import USER_AGENT, AttackProbe, build_attack_handlers
 from a2d.agents.tools import Guard, Scope
 from a2d.engine.base import Budget, RawFinding, ScanStopped
 
+
+def _resp(text, ctype="application/json"):
+    return httpx.Response(200, text=text, headers={"content-type": ctype})
+
+
+@pytest.mark.parametrize("text, ctype", [
+    (json.dumps({"order_id": "2024010123456789"}), "application/json"),  # 주문번호가 전화번호로 안 잡힘
+    (json.dumps({"ts": 1701012345678}), "application/json"),            # 타임스탬프
+    ("<footer>support@jobnest.test</footer>", "text/html"),             # HTML 푸터 메일
+    (json.dumps({"items": [{"id": 1, "title": "백엔드"}]}), "application/json"),  # 개인정보 아님
+    (json.dumps({"contact": "support@jobnest.test"}), "application/json"),  # 메일 하나(1종, 필드 없음)
+])
+def test_pii_shape_no_false_positive(text, ctype):
+    kinds, _ = AttackProbe._pii_shape(_resp(text, ctype))
+    assert kinds == [], f"오탐: {kinds}"
+
+
+def test_pii_shape_detects_real_pii():
+    body = json.dumps({"total": 40, "items": [
+        {"id": 1, "name": "김민준", "email": "a@example.com", "phone": "010-0000-0001"}]})
+    kinds, count = AttackProbe._pii_shape(_resp(body))
+    assert "개인정보 필드" in kinds and count == 1
+
 SUMMARY = {
     "assets": [
         {"asset_id": "A-001", "host": "www.jobnest.test", "alias": "www", "tags": ["web"], "importance": 4},
