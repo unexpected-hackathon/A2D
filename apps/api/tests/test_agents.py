@@ -8,9 +8,13 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from types import SimpleNamespace
+
 from a2d import agents
+from a2d.agents.tools import Scope, ToolResult
 from a2d.catalog import GUIDES
 from a2d.config import Settings
+from a2d.engine.base import Budget, ScanStopped
 from a2d.main import create_app
 
 from .test_api import EMAIL, ORIGIN, PASSWORD, login, setup_domain, wait_done
@@ -34,8 +38,10 @@ class FakeVllm:
             return httpx.Response(400, json={"error": "response_format not supported"})
         if self.status != 200:
             return httpx.Response(self.status, text="boom")
-        content = self.reply(body, len(self.requests))
-        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": content}}]})
+        reply = self.reply(body, len(self.requests))
+        # 도구 호출 답은 reply가 message dict를 그대로 돌려준다(content는 null). 글자면 content로 감싼다.
+        message = reply if isinstance(reply, dict) else {"role": "assistant", "content": reply}
+        return httpx.Response(200, json={"choices": [{"message": message}]})
 
 
 def data_of(body: dict) -> dict:
@@ -299,3 +305,149 @@ def test_question_prompt_is_capped():
     sent = json.loads(re.search(r"<findings>\n(.*)\n</findings>", text, re.S).group(1))
     assert 1 <= len(sent) < 15 and len(json.dumps(sent, ensure_ascii=False, separators=(",", ":"))) <= agents.QA_MAX_CHARS
     assert sent[0]["finding_id"] == "F-0000"  # 위험 점수가 높은 것이 남는다
+
+
+# ------------------------------------------------------------------ 추가 점검 (Attack, FR-04)
+
+ATTACK_SUMMARY = {
+    "assets": [
+        {"asset_id": "A-001", "host": "www.example.test", "alias": "www", "tags": ["web"], "importance": 4},
+        {"asset_id": "A-002", "host": "api.example.test", "alias": "api", "tags": ["api"], "importance": 5},
+    ],
+    "findings": [{"asset_id": "A-002", "check_id": 16, "situation": "개인정보 형태 데이터 반환"}],
+}
+
+
+def tool_call_reply(*steps):
+    """가짜 vLLM이 요청 n번째마다 도구 호출 하나를 돌려준다. steps = (도구 이름, 인자 dict) 차례.
+
+    steps를 다 쓰면 도구 없는 답(content)을 돌려줘 루프가 스스로 멈추게 한다.
+    """
+    def reply(body, n):
+        if n <= len(steps):
+            name, args = steps[n - 1]
+            return {"role": "assistant", "content": None, "tool_calls": [
+                {"id": f"call_{n}", "type": "function",
+                 "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)}}]}
+        return "더 볼 곳이 없습니다."
+    return reply
+
+
+def attack_setup(reply, *, budget=None, requests_limit=300, tool_calls_limit=20):
+    """run_attack을 직접 돌리는 준비: 가짜 LLM, 가짜 핸들러, 감사 기록을 모은 ctx를 만든다."""
+    settings = Settings(llm_base_url="http://llm.test/v1", llm_api_key="k")
+    fake = FakeVllm(reply)
+    llm = agents.LlmClient(settings, transport=httpx.MockTransport(fake))
+    budget = budget or Budget(requests_limit, tool_calls_limit, 300)
+    rows: list[dict] = []
+    calls: list[tuple[str, dict]] = []
+
+    def audit(actor, tool, args, result_summary=None, rejected=False, reject_reason=None):
+        rows.append({"actor": actor, "tool": tool, "args": args, "result_summary": result_summary,
+                     "rejected": rejected, "reject_reason": reject_reason})
+
+    async def probe(args, scope):
+        calls.append(("probe_http", args.model_dump()))
+        budget.requests_used += 1
+        e = scope.add_endpoint("A-002", "GET", "/api/v1/jobs")
+        return ToolResult({"status": "ok", "endpoints": [e.endpoint_id]}, "엔드포인트 1개")
+
+    async def unauth(args, scope):
+        calls.append(("check_unauth_api", args.model_dump()))
+        budget.requests_used += 1
+        return ToolResult({"status": "finding", "finding_id": "F-0012", "evidence": "200 응답(가림)"}, "발견 1건")
+
+    ctx = SimpleNamespace(budget=budget, audit=audit)
+    handlers = {"probe_http": probe, "check_unauth_api": unauth}
+    return llm, ctx, fake, rows, calls, handlers
+
+
+def test_attack_runs_tools_until_finish():
+    reply = tool_call_reply(
+        ("list_assets", {}),
+        ("probe_http", {"asset_id": "A-002"}),
+        ("check_unauth_api", {"asset_id": "A-002", "endpoint_id": "E-01"}),
+        ("finish_scan", {"reason": "더 볼 곳 없음"}),
+    )
+    llm, ctx, fake, rows, calls, handlers = attack_setup(reply)
+    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers=handlers))
+
+    assert calls == [("probe_http", {"asset_id": "A-002"}),
+                     ("check_unauth_api", {"asset_id": "A-002", "endpoint_id": "E-01"})]
+    assert [r["tool"] for r in rows] == ["list_assets", "probe_http", "check_unauth_api", "finish_scan"]
+    assert all(not r["rejected"] for r in rows)
+    assert rows[-1]["result_summary"] == "추가 점검 종료: 더 볼 곳 없음"
+    assert ctx.budget.tool_calls_used == 4
+
+    # finish_scan 뒤에는 LLM을 다시 부르지 않는다. 도구·요청은 보내되 위치 URL은 보내지 않는다.
+    assert len(fake.requests) == 4
+    body = fake.requests[0]
+    assert body["tool_choice"] == "auto" and "response_format" not in body
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    names = [t["function"]["name"] for t in body["tools"]]
+    assert names == ["list_assets", "probe_http", "check_unauth_api", "finish_scan"]
+    assert "example.test" not in json.dumps(fake.requests, ensure_ascii=False)
+
+
+def test_attack_guard_rejection_is_audited():
+    reply = tool_call_reply(
+        ("check_unauth_api", {"asset_id": "A-002", "endpoint_id": "E-99"}),  # 찾은 적 없는 엔드포인트
+        ("probe_http", {"asset_id": "A-404"}),  # 소유권 밖 자산
+        ("finish_scan", {"reason": "끝"}),
+    )
+    llm, ctx, fake, rows, calls, handlers = attack_setup(reply)
+    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers=handlers))
+
+    assert calls == []  # 거부된 호출은 핸들러에 닿지 않는다
+    rejected = [r for r in rows if r["rejected"]]
+    assert [r["tool"] for r in rejected] == ["check_unauth_api", "probe_http"]
+    assert "찾은 적 없는 엔드포인트" in rejected[0]["reject_reason"]
+    assert "소유권이 확인된 자산이 아님" in rejected[1]["reject_reason"]
+    assert rows[-1]["tool"] == "finish_scan" and rows[-1]["rejected"] is False
+
+
+def test_attack_stops_when_tool_budget_exhausted():
+    # 도구 2회 예산. finish_scan을 부르기 전에 예산이 끝나면 멈춘다.
+    reply = tool_call_reply(
+        ("probe_http", {"asset_id": "A-002"}),
+        ("probe_http", {"asset_id": "A-001"}),
+        ("check_unauth_api", {"asset_id": "A-002", "endpoint_id": "E-01"}),
+    )
+    llm, ctx, fake, rows, calls, handlers = attack_setup(reply, tool_calls_limit=2)
+    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers=handlers))
+    assert ctx.budget.tool_calls_used == 2
+    assert len(rows) == 2 and all(not r["rejected"] for r in rows)
+    assert len(fake.requests) == 2  # 예산 소진 후 LLM을 다시 부르지 않는다
+
+
+def test_attack_stops_on_llm_error():
+    fake = FakeVllm(lambda body, n: "", status=500)
+    settings = Settings(llm_base_url="http://llm.test/v1")
+    llm = agents.LlmClient(settings, transport=httpx.MockTransport(fake))
+    rows: list[dict] = []
+
+    async def probe(args, scope):  # 등록만 해 둔다. LLM 요청이 먼저 실패해 불리지 않는다
+        rows.append(("probe", None))
+        return ToolResult({"status": "ok"}, "ok")
+
+    ctx = SimpleNamespace(budget=Budget(300, 20, 300),
+                          audit=lambda *a, **k: rows.append((a, k)))
+    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers={"probe_http": probe}))
+    assert rows == []  # 첫 요청이 실패하면 도구를 한 번도 부르지 않는다
+
+
+def test_attack_scan_stop_propagates():
+    reply = tool_call_reply(("list_assets", {}), ("finish_scan", {"reason": "끝"}))
+    llm, ctx, fake, rows, calls, handlers = attack_setup(reply)
+    ctx.budget.stop_requested = True
+    with pytest.raises(ScanStopped):
+        asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers=handlers))
+
+
+def test_attack_noop_without_llm():
+    llm = agents.LlmClient(Settings())  # 주소 없음 → configured False
+    rows: list[dict] = []
+    ctx = SimpleNamespace(budget=Budget(300, 20, 300),
+                          audit=lambda *a, **k: rows.append((a, k)))
+    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY))
+    assert rows == []

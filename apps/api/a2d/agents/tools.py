@@ -100,6 +100,11 @@ ATTACK_TOOLS: tuple[ToolSpec, ...] = (
 
 TOOLS: dict[str, ToolSpec] = {t.name: t for t in ATTACK_TOOLS}
 
+# 대상에 실제 요청을 보내는 점검 핸들러(probe_http, check_unauth_api 등)는 팀이 따로 만들어 여기에 등록한다.
+# 비어 있으면 Attack 에이전트는 요청을 보내지 않는 기본 도구(list_assets·finish_scan)만 쓸 수 있다.
+# (list_assets·finish_scan 핸들러는 Guard 안에 들어 있다.) run_attack이 이 표를 Guard에 끼운다.
+ATTACK_HANDLERS: dict[str, "Handler"] = {}
+
 
 # ==================================================================== 범위(자산·엔드포인트)
 

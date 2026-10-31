@@ -71,7 +71,7 @@ a2d/
 
 ### LLM 붙이기
 
-GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 되고, 조치 가이드와 질의응답이 LLM을 쓴다. 호출은 모두 `a2d/agents/__init__.py`에 있다. 추가 점검(`run_attack`)은 아직 비어 있다.
+GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 되고, 조치 가이드와 질의응답이 LLM을 쓴다. 호출은 모두 `a2d/agents/__init__.py`에 있다. 추가 점검(`run_attack`)은 도구 호출 루프와 가드 층(`a2d/agents/tools.py`)까지 붙어 있으나, 대상에 요청을 보내는 점검 핸들러(`probe_http`·`check_unauth_api` 등, `ATTACK_HANDLERS`)는 팀이 따로 만든다. 핸들러가 등록되기 전에는 추가 점검 단계를 건너뛴다.
 
 LLM에는 발견 ID, 점검 항목, 자산 별칭, 점수 요소, 가린 증거, 팀이 쓴 기본 가이드만 보낸다. 발견 위치(URL)와 응답 원문은 보내지 않는다. 답은 vLLM 구조화 출력(`response_format` json_schema)으로 JSON만 받는다. 서버가 이를 거절하면 schema 없이 다시 보내고, 답에서 JSON을 꺼내 쓴다.
 
