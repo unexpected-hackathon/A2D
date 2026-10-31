@@ -105,7 +105,7 @@ body {
   outline-offset: 2px;
 }
 
-/* ---------- 한 장 요약 (ExportDialog) ----------
+/* ---------- 요약 (ExportDialog) ----------
  * 0~100 가로 게이지: 등급 구간 띠 위에 현재 점수 점, 위에 점수 글자, 아래에 구간 경계 눈금. */
 /* SEED Dialog가 word-break: break-all이라 한글이 낱자로 끊긴다. 요약 안에서는 단어 단위로 끊는다. */
 .a2d-onepager {
@@ -119,7 +119,6 @@ body {
 .a2d-gauge-label {
   position: absolute;
   top: 0;
-  transform: translateX(-50%);
   white-space: nowrap;
   font-size: 13px;
   font-weight: 700;

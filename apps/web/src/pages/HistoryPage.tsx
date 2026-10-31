@@ -4,7 +4,7 @@
 //   1) GET /domains/{id}/history → 점수 추이 그래프(4-1)와 점검 목록(4-2)
 //   2) 점검을 고르면(기본: 가장 최근) GET /scans/{id}/changes(4-3), GET /scans/{id}/audit(4-4)
 //   3) 재점검이 끝나면(useScan().finishedVersion) 1)을 다시 부르고 새 점검을 고른다
-//   4) "한 장 요약 내보내기"(4-5) → 모달(ExportDialog)에서 인쇄
+//   4) "요약 내보내기"(4-5) → 모달(ExportDialog)에서 인쇄
 
 import { HStack, Skeleton, Text, VStack } from '@seed-design/react'
 import { useState } from 'react'

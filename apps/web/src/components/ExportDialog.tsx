@@ -1,4 +1,4 @@
-// 4-5 한 장 요약 내보내기 (FR-13, P1). 기록 화면에서 모달로 띄운다.
+// 4-5 요약 내보내기 (FR-13, P1). 기록 화면에서 모달로 띄운다.
 // 별도 API 없이 GET /domains/{id}/summary 하나로 안전 점수 게이지와 등급별 발견 수를 보여 주고,
 // 브라우저 인쇄(PDF로 저장)로 내보낸다(API 명세 2장).
 //
@@ -29,10 +29,10 @@ export function ExportDialog({ domainId }: { domainId: string }) {
     <DialogRoot open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <ActionButton variant="neutralWeak">
-          <PrefixIcon svg={<IconDocumentArrowLeftLine />} />한 장 요약 내보내기
+          <PrefixIcon svg={<IconDocumentArrowLeftLine />} />요약 내보내기
         </ActionButton>
       </DialogTrigger>
-      <DialogContent title="한 장 요약" style={{ maxWidth: 640, width: 'calc(100% - 32px)' }}>
+      <DialogContent title="요약" style={{ maxWidth: 640, width: 'calc(100% - 32px)' }}>
         <ExportBody domainId={domainId} />
       </DialogContent>
     </DialogRoot>

@@ -105,10 +105,10 @@ describe('조치 가이드 근거 검증 표시', () => {
   })
 })
 
-describe('한 장 요약', () => {
+describe('요약', () => {
   it('기록 화면에서 모달로 열고, 게이지와 등급별 발견 수를 보여 준다', async () => {
     await renderApp('/history')
-    await userEvent.click(await screen.findByRole('button', { name: '한 장 요약 내보내기' }, TIMEOUT))
+    await userEvent.click(await screen.findByRole('button', { name: '요약 내보내기' }, TIMEOUT))
     const dialog = await screen.findByRole('dialog', {}, TIMEOUT)
     expect(await within(dialog).findByRole('img', { name: /안전 점수 \d+점, 100점 만점/ }, TIMEOUT)).toBeInTheDocument()
     expect(within(dialog).getByText('등급별 발견 수')).toBeInTheDocument()
@@ -119,7 +119,7 @@ describe('한 장 요약', () => {
     const { api } = await import('./api/endpoints')
     const { ApiError } = await import('./api/client')
     await renderApp('/history')
-    const button = await screen.findByRole('button', { name: '한 장 요약 내보내기' }, TIMEOUT)
+    const button = await screen.findByRole('button', { name: '요약 내보내기' }, TIMEOUT)
     vi.spyOn(api.domains, 'summary').mockRejectedValue(new ApiError(500, 'UNKNOWN', '서버 오류가 발생했습니다.'))
     await userEvent.click(button)
     expect(await screen.findByText('요약을 만들지 못했습니다', {}, TIMEOUT)).toBeInTheDocument()
