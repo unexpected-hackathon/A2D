@@ -39,7 +39,27 @@
 
 ## 실행 방법
 
-각 디렉터리의 README에 적는다. 기술 스택이 정해지면 여기에 전체 시연 환경을 띄우는 순서를 정리한다.
+시연 환경은 한 노트북에서 피공격 서버(`target/`)와 A2D 백엔드(`apps/api/`)를 Docker로 띄운다. Docker와 Docker Compose v2가 필요하고, 인터넷은 처음 이미지를 받을 때만 쓴다. 자세한 설정은 각 디렉터리의 README를 본다.
+
+```bash
+# 1. 피공격 서버: 결함을 심은 가상 채용 플랫폼(127.0.0.1에만 열린다)
+cd target
+./demo.sh up
+./demo.sh preset demo        # 기본 시연 결함 #16 #8 #18만 켠다
+
+# 2. A2D 백엔드: 시연 네트워크(a2d-demo)에 붙고 시연 DNS로 소유권을 확인한다
+cd ../apps/api
+cp .env.example .env         # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD를 채운다
+docker compose up -d --build # http://127.0.0.1:8000/api/v1
+
+# 3. 화면: apps/web/README.md 순서로 띄우고, 화면을 연 주소를 .env의 A2D_WEB_ORIGIN에 넣는다
+
+# 4. 등록 화면이 준 TXT 값을 시연 DNS에 넣고 화면에서 "확인"을 누른다
+cd ../../target
+./demo.sh verify a2d-verify=<값>
+```
+
+시연 순서(점검 → 조치 → 재점검 → 새 서버 감시)와 단계별 명령은 [target/README.md](target/README.md) "시연 순서"에 있다. 내릴 때는 `apps/api`에서 `docker compose down`, `target`에서 `./demo.sh down`을 실행한다.
 
 ## 외부 자원
 
