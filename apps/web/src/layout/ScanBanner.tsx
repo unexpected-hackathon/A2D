@@ -1,5 +1,6 @@
 // 점검 진행 띠 (정보 구조도 2장 공통 레이아웃). 어느 화면에서든 머리글 아래에 보인다.
 // - 점검 중: 지금 단계, 진행 막대, 요청 예산, 중지 버튼(확인 대화상자)
+//   추가 점검 단계에서는 Attack 에이전트가 최근에 부른 도구 3개와 그 결과(감사 기록)를 함께 보여 준다
 // - 끝남: 새 안전 점수를 알리고 몇 초 뒤 사라진다
 // 상태는 useScan()에서 받는다. 이 컴포넌트는 그리기만 한다.
 
@@ -20,7 +21,9 @@ import {
 } from 'seed-design/ui/alert-dialog'
 import { PageBanner } from 'seed-design/ui/page-banner'
 import { ProgressCircle } from 'seed-design/ui/progress-circle'
+import { useAgentTrail } from '../hooks/useAgentTrail'
 import { useScan } from '../hooks/useScan'
+import { agentTrail } from '../lib/agentTrail'
 import { gradeStyle } from '../theme/severity'
 
 const FINISHED_VISIBLE_MS = 8000
@@ -36,6 +39,7 @@ export function ScanBanner() {
   }, [lastFinished, dismissFinished])
 
   const ratio = running && running.stage.total > 0 ? running.stage.done / running.stage.total : 0
+  const trail = agentTrail(useAgentTrail(running))
 
   return (
     <AnimatePresence initial={false}>
@@ -56,6 +60,23 @@ export function ScanBanner() {
               </VStack>
               <StopButton onConfirm={stop} />
             </HStack>
+            {running && trail.length > 0 && (
+              <VStack gap="x1_5" px="x5" pb="x4" aria-label="Attack 에이전트 최근 도구 호출">
+                <Text textStyle="t2Medium" color="fg.neutralSubtle">
+                  {`Attack 에이전트 · 도구 ${running.budget.tool_calls_used}/${running.budget.tool_calls_limit}회`}
+                </Text>
+                {trail.map((row) => (
+                  <HStack key={row.key} gap="x2" align="flex-start" wrap>
+                    <Text textStyle="t3Bold" color={row.rejected ? 'fg.critical' : 'fg.neutral'}>
+                      {row.label}
+                    </Text>
+                    <Text textStyle="t3Regular" color="fg.neutralMuted">
+                      {row.detail}
+                    </Text>
+                  </HStack>
+                ))}
+              </VStack>
+            )}
             {/* 진행 막대: 단계 안의 진행률. 단계 사이에는 브랜드 줄이 흐른다 */}
             <Box position="relative" height="3px" bg="bg.neutralWeak">
               <div className="a2d-flow-line" data-running="true" style={{ position: 'absolute', inset: 0, opacity: 0.35 }} />
