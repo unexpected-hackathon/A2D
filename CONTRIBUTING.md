@@ -11,10 +11,10 @@ main ──●────────────●─────────
 ```
 
 1. **`main`은 언제나 동작한다.** `main`에 직접 커밋하거나 push하지 않는다.
-2. **최신 `main`에서 브랜치를 딴다.**
+2. **`origin/main`에서 브랜치를 딴다.** 작업을 시작하기 전에 항상 fetch하고, 로컬 `main`이 아니라 `origin/main`을 기준으로 삼는다. 워크트리를 만들 때도 같다.
    ```bash
-   git switch main && git pull
-   git switch -c feat/api-domain-verify
+   git fetch origin
+   git switch -c feat/api-domain-verify origin/main
    ```
 3. **작게 커밋하고 자주 push한다.** 커밋 메시지는 아래 [커밋 규칙](#3-커밋-규칙)을 따른다.
    ```bash
