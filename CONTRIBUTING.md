@@ -21,7 +21,7 @@ main ──●────────────●─────────
    git push -u origin feat/api-domain-verify
    ```
 4. **PR을 연다.** 작업 중이면 Draft PR로 열어 진행 상황을 공유한다. 본문은 PR 템플릿을 채운다.
-5. **필요하면 리뷰를 받는다.** 승인 없이도 머지할 수 있다. 다른 사람 담당 영역을 건드렸다면 그 담당자에게 리뷰를 요청한다.
+5. **리뷰를 받는다.** 다른 팀원 1명 이상이 승인해야 머지할 수 있다. 관리자도 예외가 없으니 급하면 디스코드에서 리뷰를 부탁한다. 다른 사람 담당 영역을 건드렸다면 그 담당자에게 요청한다.
 6. **Squash merge로 합친다.** PR 하나가 `main`의 커밋 하나가 되고, PR 제목이 그 커밋 메시지가 된다.
 7. **머지한 브랜치는 지운다.**
 
@@ -144,7 +144,7 @@ docs(docs): PRD에 재점검 흐름 추가
 아래 설정이 적용돼 있다. 바꿀 때는 팀에 먼저 알리고 이 절도 함께 고친다.
 
 - **Settings → Rules → Rulesets → `protect-main`** (기본 브랜치 `main`에 적용, 예외 없음)
-  - Require a pull request before merging: 승인 없이 머지 가능, 머지 방식 Squash만
+  - Require a pull request before merging: 승인 1명 이상, 머지 방식 Squash만
   - Block force pushes
   - Restrict deletions
 - **Settings → General → Pull Requests**
