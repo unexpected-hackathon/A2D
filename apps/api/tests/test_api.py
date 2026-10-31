@@ -203,3 +203,71 @@ def test_not_found(client):
     r = client.get("/api/v1/scans/S-9999")
     assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
     assert client.get("/api/v1/findings/F-9999").status_code == 404
+
+
+# ---------------------------------------------------------------- PR #14 리뷰 회귀 테스트
+
+def test_stopped_scan_keeps_unchecked_findings(tmp_path):
+    """중지한 재점검이 확인 못 한 발견을 해결됨으로, 자산을 사라짐으로 내지 않는다."""
+    s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / "db.sqlite3"),
+                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0.05)
+    with TestClient(create_app(s), headers={"Origin": ORIGIN}) as c:
+        login(c)
+        domain_id = setup_domain(c)
+        s1 = c.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
+        assert wait_done(c, s1)["safety_score"] == 20
+
+        s2 = c.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
+        stopped = c.post(f"/api/v1/scans/{s2}/stop").json()
+        assert stopped["status"] == "stopped"
+        assert stopped["safety_score"] == 20 and stopped["grade"] == "F"
+
+        ch = c.get(f"/api/v1/scans/{s2}/changes").json()
+        assert ch["resolved_findings"] == [] and ch["removed_assets"] == []
+        assert c.get(f"/api/v1/scans/{s2}/findings?status=resolved").json()["items"] == []
+        fs = c.get(f"/api/v1/scans/{s2}/findings").json()["items"]
+        assert len(fs) == 3 and {f["status"] for f in fs} == {"open"}
+
+        summary = c.get(f"/api/v1/domains/{domain_id}/summary").json()
+        assert summary["safety_score"] == 20 and summary["asset_count"] == 7
+        assert summary["alerts"] == []
+
+        # 중지한 점검은 시나리오 회차를 넘기지 않는다: 다음 점검이 2회차(해결)다
+        s3 = c.post(f"/api/v1/domains/{domain_id}/scans").json()
+        assert s3["previous_scan_id"] == s2
+        assert wait_done(c, s3["scan_id"])["safety_score"] == 100
+        assert len(c.get(f"/api/v1/scans/{s3['scan_id']}/changes").json()["resolved_findings"]) == 3
+
+
+def test_time_limit_is_stopped_not_done(client):
+    login(client)
+    domain_id = setup_domain(client)
+    s1 = client.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
+    wait_done(client, s1)
+    client.app.state.svc.s.time_limit_sec = 0  # 다음 점검은 바로 시간 초과
+    s2 = client.post(f"/api/v1/domains/{domain_id}/scans").json()["scan_id"]
+    body = wait_done(client, s2)
+    assert body["status"] == "stopped" and body["stage"]["name"] == "중지됨 (제한 시간 초과)"
+    assert body["safety_score"] == 20
+    assert client.get(f"/api/v1/scans/{s2}/changes").json()["resolved_findings"] == []
+
+
+def test_admin_email_case_insensitive(tmp_path):
+    s = Settings(admin_email="Admin@JobNest.test", admin_password=PASSWORD, db_path=str(tmp_path / "db.sqlite3"),
+                 web_origins=[ORIGIN], verify_mode="trust", fixture_step_sec=0)
+    with TestClient(create_app(s), headers={"Origin": ORIGIN}) as c:
+        r = c.post("/api/v1/auth/login", json={"email": "admin@jobnest.test", "password": PASSWORD})
+        assert r.status_code == 200 and r.json()["user"]["email"] == "admin@jobnest.test"
+        assert c.post("/api/v1/auth/login", json={"email": "ADMIN@jobnest.TEST", "password": PASSWORD}).status_code == 200
+
+
+def test_asset_ids_unique_across_domains(client):
+    login(client)
+    ids = []
+    for name in ("jobnest.test", "other.test"):
+        d = client.post("/api/v1/domains", json={"domain": name}).json()
+        client.post(f"/api/v1/domains/{d['domain_id']}/verify")
+        scan_id = client.post(f"/api/v1/domains/{d['domain_id']}/scans").json()["scan_id"]
+        wait_done(client, scan_id)
+        ids += [a["asset_id"] for a in client.get(f"/api/v1/scans/{scan_id}/assets").json()["items"]]
+    assert len(ids) == 14 and len(set(ids)) == 14

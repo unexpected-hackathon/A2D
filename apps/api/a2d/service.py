@@ -216,7 +216,8 @@ class Service:
             "status": "queued",
             "stage": {"name": STAGE_NAMES["queued"], "done": 0, "total": 0},
             "budget": budget.to_api(),
-            "round": len(self.store.scans_for(domain_id, FINISHED)) + 1,
+            # 가짜 엔진의 시나리오 회차. 끝까지 돈 점검만 센다
+            "round": len(self.store.scans_for(domain_id, ("done",))) + 1,
             "previous_scan_id": prev["scan_id"] if prev else None,
             "started_at": now_iso(),
             "finished_at": None,
@@ -274,10 +275,12 @@ class Service:
             })
 
         ctx = EngineContext(scan_id, domain["domain"], scan["round"], budget, set_stage, add_asset, add_finding, audit)
-        final = "done"
+        # 기본 점검(엔진)이 끝까지 돌았는지. 추가 점검(에이전트) 중에 멈춘 것은 기본 점검 결과가 온전하다.
+        engine_complete = False
         try:
             try:
                 await self.engine.run(ctx)
+                engine_complete = True
                 set_stage("agent", STAGE_NAMES["agent"], 0, 1)
                 try:
                     await agents.run_attack(self.llm, ctx, {"asset_ids": [a["asset_id"] for a in assets.values()]})
@@ -287,18 +290,23 @@ class Service:
                     log.exception("추가 점검 실패: %s", scan_id)
                 set_stage("agent", STAGE_NAMES["agent"], 1, 1)
             except ScanStopped as e:
-                if budget.stop_requested:
-                    final = "stopped"
                 log.info("점검 %s 멈춤: %s", scan_id, e)
 
+            # 사용자가 멈췄거나 기본 점검을 끝내지 못했으면(시간 초과) stopped다.
+            final = "stopped" if budget.stop_requested or not engine_complete else "done"
+            stage_name = STAGE_NAMES[final]
+            if not engine_complete and not budget.stop_requested:
+                stage_name = "중지됨 (제한 시간 초과)"
+            scan["partial"] = not engine_complete
+
             set_stage("scoring", STAGE_NAMES["scoring"], 0, 1)
-            self._materialize(scan, list(assets.values()), list(findings.values()))
+            self._materialize(scan, list(assets.values()), list(findings.values()), partial=not engine_complete)
             set_stage("scoring", STAGE_NAMES["scoring"], 1, 1)
 
             set_stage("reporting", STAGE_NAMES["reporting"], 0, 1)
             await self._build_report(scan, use_llm=final == "done")
             scan["status"] = final
-            scan["stage"] = {**scan["stage"], "name": STAGE_NAMES[final], "done": 1}
+            scan["stage"] = {**scan["stage"], "name": stage_name, "done": 1}
         except asyncio.CancelledError:
             scan.update(status="failed", error_message="서버가 종료되어 점검이 중단되었습니다.")
             scan["stage"] = {**scan["stage"], "name": STAGE_NAMES["failed"]}
@@ -341,18 +349,23 @@ class Service:
         if budget is not None:
             budget.stop_requested = True
         if task is not None:
+            # 오래 붙잡지 않는다. 그 안에 끝나지 않으면 화면이 폴링으로 stopped를 받는다.
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=10)
+                await asyncio.wait_for(asyncio.shield(task), timeout=1)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 pass
         return self.get_scan(scan_id)
 
     # ================================================================ 점수 (FR-05, FR-06)
 
-    def _materialize(self, scan: dict, assets: list[dict], findings: list[dict]) -> None:
-        """엔진 결과를 점검 스냅숏으로 저장하고 점수를 계산한다."""
+    def _materialize(self, scan: dict, assets: list[dict], findings: list[dict], *, partial: bool = False) -> None:
+        """엔진 결과를 점검 스냅숏으로 저장하고 점수를 계산한다.
+
+        partial(기본 점검을 끝내지 못함)이면 이번에 다시 보지 못한 직전 자산·발견을 그대로 이어받는다.
+        확인하지 못한 것을 '해결됨'·'사라짐'으로 보지 않기 위해서다. 새로 찾은 자산·발견은 그대로 반영한다.
+        """
         prev = scan.get("previous_scan_id")
-        prev_assets = {a["asset_id"] for a in self.store.scan_assets(prev)} if prev else set()
+        prev_assets = {a["asset_id"]: a for a in self.store.scan_assets(prev)} if prev else {}
         out_assets = []
         for a in assets:
             out_assets.append({
@@ -362,6 +375,12 @@ class Service:
                 "components": a["components"], "tls_version": a["tls_version"],
                 "is_new": bool(prev) and a["asset_id"] not in prev_assets,
             })
+        if partial and prev:
+            seen_assets = {a["asset_id"] for a in out_assets}
+            out_assets += [{**a, "is_new": False} for k, a in prev_assets.items() if k not in seen_assets]
+            seen = {f["finding_id"] for f in findings}
+            findings = findings + [{**f, "scan_id": scan["scan_id"]} for f in self.store.findings(prev)
+                                   if f["finding_id"] not in seen]
         self._score(scan, out_assets, findings)
 
     def _score(self, scan: dict, assets: list[dict], findings: list[dict]) -> None:
