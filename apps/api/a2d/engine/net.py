@@ -15,7 +15,7 @@ import datetime as dt
 import logging
 import ssl
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import httpx
@@ -41,6 +41,8 @@ class Fetched:
     scheme: str
     # 리다이렉트(Location)만 따로 본다. 본문은 따라가지 않는다.
     location: str | None = None
+    # Set-Cookie는 쿠키마다 따로 둔다. headers에서는 여러 줄이 쉼표로 합쳐져 쿠키별 속성을 가를 수 없다.
+    set_cookies: list[str] = field(default_factory=list)
 
     def header(self, name: str) -> str | None:
         return self.headers.get(name.lower())
@@ -114,7 +116,8 @@ class HttpClient:
         return Fetched(url=str(r.url), status=r.status_code,
                        headers={k.lower(): v for k, v in r.headers.items()},
                        text=text, scheme=httpx.URL(url).scheme,
-                       location=r.headers.get("location"))
+                       location=r.headers.get("location"),
+                       set_cookies=r.headers.get_list("set-cookie"))
 
     async def _throttle(self, host: str) -> None:
         if self.host_min_interval <= 0 or not host:
