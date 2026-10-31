@@ -145,7 +145,7 @@ function Shell() {
   const tab = PAPERS.find((p) => pathname.startsWith(p.path))
   const paper = tab ?? NEUTRAL
 
-  // 제목 글자색. 바탕은 물결이 쓸고 지나가며 늦게 바뀌므로, 글자색도 새 색이 제목 자리를 덮은 뒤(onCover)에 바꾼다.
+  // 제목 글자색. 바탕은 물결이 쓸고 지나가며 늦게 바뀌므로, 글자색은 SheetWash가 바탕에 맞춰 알려 주는 값을 쓴다.
   const [ink, setInk] = useState(paper.ink)
 
   // 다른 탭으로 넘어가면 맨 위에서 시작한다. 같은 탭 안의 이동(/guide → /guide/:scanId), 뒤로가기(브라우저가
@@ -176,7 +176,7 @@ function Shell() {
           <IndexTabs tabs={PAPERS} activeKey={tab?.key ?? null} onSelect={(t) => navigate(t.path)} />
           {/* 내용 영역: 바탕은 고른 종이 색(SheetWash), 글자색은 그 종이의 ink */}
           <main className="a2d-sheet" data-paper={paper.key} style={{ '--a2d-ink': ink } as CSSProperties}>
-            <SheetWash id={paper.key} fill={paper.fill} onCover={() => setInk(paper.ink)} />
+            <SheetWash paper={{ id: paper.key, fill: paper.fill, ink: paper.ink }} onInk={setInk} />
             <div className="a2d-sheet__content">
               <VStack gap="x6">
                 <ScanBanner />
