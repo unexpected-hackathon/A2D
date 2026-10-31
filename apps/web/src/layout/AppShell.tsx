@@ -3,12 +3,13 @@
 //   ┌ 머리글(위에 고정) ─────────────────────────────────────┐
 //   │ 로고  [점검 대상 도메인 ▾]                    [사용자 ▾] │
 //   └───────────────────────────────────────────────────────┘
-//   ┌ 큰 카드 ──────────────────────────────────────────────┐
-//   │ 주황│흰색│갈색 ≈≈ │  지금 주소의 화면(<Outlet />)         │
-//   │    (계단식 탭)    │  바탕은 고른 종이와 같은 색(물결로 바뀜) │
-//   │ 대시│조치│기록 ≈≈ │                                       │
-//   └───────────────────────────────────────────────────────┘
-//   겹친 종이 세 장(PaperTabs)이 메뉴다. 휴대폰에서는 종이가 카드 위쪽에 가로로 겹친다.
+//   ▐주황▌┌ 내용 영역(큰 카드) ───────────────────────────────┐
+//        │  지금 주소의 화면(<Outlet />)                        │
+//    ▐흰▌│  바탕은 고른 탭과 같은 색(물결로 쓸고 지나가며 바뀜)  │
+//        │                                                   │
+//     ▐갈▌│                                                   │
+//        └───────────────────────────────────────────────────┘
+//   파일 색인 탭 세 개(IndexTabs)가 메뉴다. 휴대폰에서는 탭이 카드 위쪽에 가로로 붙는다.
 
 import {
   IconArrowLeftBracketRightLine,
@@ -33,12 +34,12 @@ import { ScanProvider } from '../hooks/ScanProvider'
 import { useApi } from '../hooks/useApi'
 import { useDomain } from '../hooks/useDomain'
 import { PageTransition } from './PageTransition'
-import { PaperTabs, type PaperTab } from './PaperTabs'
+import { IndexTabs, type IndexTab } from './IndexTabs'
 import { ScanBanner } from './ScanBanner'
 import { SheetWash } from './SheetWash'
 
-// 종이 세 장: 왼쪽(위)부터 주황·흰색·갈색. 색은 global.css의 --a2d-paper-* 변수.
-const PAPERS: (PaperTab & { path: string })[] = [
+// 탭 세 개: 위(왼쪽)부터 주황·흰색·갈색. 색은 global.css의 --a2d-paper-* 변수.
+const PAPERS: (IndexTab & { path: string })[] = [
   { key: 'dashboard', path: '/dashboard', label: '대시보드', icon: <IconHouseFill />, fill: 'var(--a2d-paper-orange)', ink: '#ffffff' },
   { key: 'guide', path: '/guide', label: '조치 가이드', icon: <IconCheckmarkShieldFill />, fill: 'var(--a2d-paper-white)', ink: 'var(--a2d-navy)' },
   { key: 'history', path: '/history', label: '기록', icon: <IconClockFill />, fill: 'var(--a2d-paper-brown)', ink: '#ffffff' },
@@ -139,7 +140,7 @@ function Shell() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { domain } = useDomain()
-  // 768px 미만(휴대폰)에서는 종이를 위쪽에 가로로 겹친다.
+  // 768px 미만(휴대폰)에서는 탭을 위쪽에 가로로 붙인다.
   const horizontal = useBreakpointValue({ base: true, md: false }) ?? false
   const { hash } = useLocation()
   const paper = PAPERS.find((p) => pathname.startsWith(p.path)) ?? PAPERS[0]
@@ -165,12 +166,8 @@ function Shell() {
           <UserMenu />
         </header>
 
-        <div
-          className="a2d-folder"
-          data-orientation={horizontal ? 'horizontal' : 'vertical'}
-          style={{ '--a2d-folder-bg': paper.fill } as CSSProperties}
-        >
-          <PaperTabs
+        <div className="a2d-folder" data-orientation={horizontal ? 'horizontal' : 'vertical'}>
+          <IndexTabs
             tabs={PAPERS}
             activeKey={active}
             orientation={horizontal ? 'horizontal' : 'vertical'}

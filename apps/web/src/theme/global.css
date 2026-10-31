@@ -276,14 +276,16 @@ body {
   --a2d-paper-orange: #e8590c;
   --a2d-paper-white: #ffffff;
   --a2d-paper-brown: #8b5a3c;
-  --a2d-sheet: #fbf8f4; /* 폴더 바탕(종이 뒤에 보이는 색) */
-  --a2d-tab-step: 132px; /* 세로 띠: 장마다 글자를 내리는 간격 */
-  --a2d-tab-step-h: 92px; /* 가로 띠(휴대폰): 장마다 글자를 미는 간격 */
-  --a2d-paper: 76px; /* 세로 종이 한 칸의 폭 */
-  --a2d-paper-h: 46px; /* 휴대폰: 가로 종이 한 칸의 높이 */
-}
-@media (max-width: 1023px) {
-  :root { --a2d-paper: 64px; }
+  --a2d-sheet: #fbf8f4;
+  /* 파일 색인 탭 (세로) */
+  --a2d-tabcol: 68px; /* 탭이 놓이는 왼쪽 칸의 폭 */
+  --a2d-tab-w: 62px; /* 뒤에 끼운 탭의 폭 */
+  --a2d-tab-w-active: 76px; /* 선택한 탭의 폭(내용 영역 위로 8px 겹친다) */
+  --a2d-tab-h: 148px;
+  --a2d-tab-step: 180px; /* 탭 하나의 세로 간격 */
+  /* 파일 색인 탭 (가로, 휴대폰) */
+  --a2d-tabrow: 48px;
+  --a2d-tab-step-h: 118px;
 }
 
 .a2d-app {
@@ -363,26 +365,23 @@ body {
 .a2d-folder {
   flex: 1;
   display: grid;
-  grid-template-columns: calc(var(--a2d-paper) * 3) minmax(0, 1fr);
-  border-radius: 28px;
-  /* hidden은 sticky(띠 글자 따라오기)를 막는다. clip은 모서리만 자르고 스크롤 기준을 바꾸지 않는다 */
-  overflow: clip;
-  /* 종이 띠와 내용 영역 사이의 좁은 틈. 고른 종이 색으로 두어 종이가 내용 영역으로 이어져 보인다 */
-  background: var(--a2d-folder-bg, var(--a2d-sheet));
-  box-shadow: 0 1px 2px rgb(16 32 47 / 0.06), 0 12px 32px rgb(16 32 47 / 0.08);
+  grid-template-columns: var(--a2d-tabcol) minmax(0, 1fr);
 }
 .a2d-folder[data-orientation="horizontal"] {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: calc(var(--a2d-paper-h) * 3) auto;
+  grid-template-rows: var(--a2d-tabrow) auto;
 }
 
 .a2d-sheet {
   container: sheet / inline-size;
   position: relative;
-  /* 색을 쓸고 지나가는 덮개가 왼쪽 종이 위로 나가지 않게 여기서 자른다 */
+  z-index: 2; /* 뒤에 끼운 탭(1)보다 위, 선택한 탭(3)보다 아래 */
+  /* 색을 쓸고 지나가는 덮개가 탭 위로 나가지 않게 여기서 자른다 */
   overflow: clip;
   isolation: isolate;
   min-width: 0;
+  border-radius: 28px;
+  box-shadow: 0 1px 2px rgb(16 32 47 / 0.06), 0 12px 32px rgb(16 32 47 / 0.08);
   padding: 32px 40px 40px;
   color: var(--a2d-ink, var(--seed-color-fg-neutral));
 }
@@ -440,128 +439,105 @@ body {
   opacity: 0.8;
 }
 
-/* 겹친 종이 */
-.a2d-papers {
+/* 파일 색인 탭 */
+.a2d-tabs {
   position: relative;
-  min-height: 100%;
 }
-.a2d-papers__art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
+.a2d-tabs--vertical {
+  /* 스크롤해도 머리글 아래에 붙어 따라온다 */
+  position: sticky;
+  top: 84px;
+  height: calc(24px + var(--a2d-tab-step) * 2 + var(--a2d-tab-h));
 }
-.a2d-papers__buttons {
-  position: absolute;
-  inset: 0;
-  display: flex;
-}
-.a2d-papers--horizontal .a2d-papers__buttons {
-  flex-direction: column;
-}
-.a2d-papers__tab {
+.a2d-tab {
   appearance: none;
   border: 0;
-  background: none;
   font: inherit;
   cursor: pointer;
-  position: relative;
-  flex: 0 0 var(--a2d-paper);
-  /* button은 안의 내용을 세로 가운데에 두므로, 세로 flex로 바꿔 위쪽에 붙인다 */
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  padding: 0;
-  opacity: 0.72;
-  transition: opacity 0.2s ease;
-}
-/* 아이콘과 글자 묶음. 세로 띠에서는 머리글 아래에 붙어 스크롤을 따라온다. */
-.a2d-papers__face {
-  position: sticky;
-  /* 파일 색인 탭처럼 장(--i)마다 한 칸씩 내려 붙인다 */
-  top: calc(84px + var(--i, 0) * var(--a2d-tab-step));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding-top: calc(28px + var(--i, 0) * var(--a2d-tab-step));
-}
-.a2d-papers--horizontal .a2d-papers__tab {
-  flex: 0 0 var(--a2d-paper-h);
-}
-.a2d-papers--horizontal .a2d-papers__face {
-  position: static;
-  height: 100%;
-  flex-direction: row;
-  /* 가로 띠에서는 장마다 오른쪽으로 한 칸씩 민다 */
-  padding: 0 0 0 calc(20px + var(--i, 0) * var(--a2d-tab-step-h));
-}
-.a2d-papers__tab:hover {
-  opacity: 0.92;
-}
-.a2d-papers__tab[data-active="true"] {
-  opacity: 1;
-}
-/* 지금 보고 있는 종이: 글자 옆에 작은 표시 */
-.a2d-papers__tab[data-active="true"] .a2d-papers__face::before {
-  content: "";
   position: absolute;
-  top: 14px;
-  left: 50%;
-  width: 18px;
-  height: 4px;
-  border-radius: 999px;
-  background: currentColor;
-  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--tab-fill);
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease, opacity 0.2s ease;
 }
-.a2d-papers--horizontal .a2d-papers__tab[data-active="true"] .a2d-papers__face::before {
-  top: 50%;
-  left: 8px;
-  width: 4px;
-  height: 18px;
-  transform: translateY(-50%);
-}
-.a2d-papers__tab:focus-visible {
+.a2d-tab:focus-visible {
   outline: 2px solid currentColor;
-  outline-offset: -6px;
-  border-radius: 12px;
+  outline-offset: -5px;
 }
-.a2d-papers__icon {
+.a2d-tab__icon {
   display: flex;
   width: 22px;
   height: 22px;
 }
-.a2d-papers__icon svg {
+.a2d-tab__icon svg {
   width: 100%;
   height: 100%;
 }
-.a2d-papers__label {
-  writing-mode: vertical-rl;
-  text-orientation: upright;
-  letter-spacing: 0.08em;
-  font-size: 15px;
+.a2d-tab__label {
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
-.a2d-papers__tab[data-active="true"] .a2d-papers__label {
+.a2d-tab[data-active="true"] .a2d-tab__label {
   font-weight: 800;
 }
-.a2d-papers--horizontal .a2d-papers__label {
-  writing-mode: horizontal-tb;
-  letter-spacing: 0;
+
+/* 세로: 왼쪽 가장자리. 장(--i)마다 한 칸씩 아래로 */
+.a2d-tabs--vertical .a2d-tab {
+  flex-direction: column;
+  top: calc(24px + var(--i, 0) * var(--a2d-tab-step));
+  left: calc(var(--a2d-tabcol) - var(--a2d-tab-w));
+  width: var(--a2d-tab-w);
+  height: var(--a2d-tab-h);
+  border-radius: 16px 0 0 16px;
+  z-index: 1;
+  opacity: 0.94;
+  box-shadow: -4px 3px 10px rgb(16 32 47 / 0.1);
+}
+.a2d-tabs--vertical .a2d-tab[data-active="true"] {
+  left: 0;
+  width: var(--a2d-tab-w-active);
+  z-index: 3;
+  opacity: 1;
+  box-shadow: -6px 4px 14px rgb(16 32 47 / 0.14);
+}
+.a2d-tabs--vertical .a2d-tab__label {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.08em;
+}
+
+/* 가로(휴대폰): 위쪽 가장자리. 장마다 오른쪽으로 한 칸씩 */
+.a2d-tabs--horizontal {
+  height: var(--a2d-tabrow);
+}
+.a2d-tabs--horizontal .a2d-tab {
+  flex-direction: row;
+  left: calc(var(--i, 0) * var(--a2d-tab-step-h));
+  top: 8px;
+  height: calc(var(--a2d-tabrow) + 8px);
+  padding: 0 16px;
+  border-radius: 16px 16px 0 0;
+  z-index: 1;
+  opacity: 0.94;
+  box-shadow: 0 -3px 10px rgb(16 32 47 / 0.08);
+}
+.a2d-tabs--horizontal .a2d-tab[data-active="true"] {
+  top: 0;
+  z-index: 3;
+  opacity: 1;
 }
 
 /* 태블릿·휴대폰 */
 @media (max-width: 1023px) {
-  :root { --a2d-tab-step: 112px; }
+  :root { --a2d-tabcol: 60px; --a2d-tab-w: 54px; --a2d-tab-w-active: 68px; --a2d-tab-h: 132px; --a2d-tab-step: 156px; }
   .a2d-sheet { padding: 28px 28px 32px; }
-  .a2d-papers__label { font-size: 14px; }
 }
 @media (max-width: 767px) {
   .a2d-app { padding: 0 12px 12px; }
-  .a2d-folder { border-radius: 22px; }
-  .a2d-sheet { padding: 20px 16px 24px; }
+  .a2d-sheet { border-radius: 0 22px 22px 22px; padding: 20px 16px 24px; }
   .a2d-brand__logo { display: none; }
   .a2d-brand__icon { display: block; }
   .a2d-user__text { display: none; }
