@@ -143,9 +143,17 @@ class HttpClient:
         self.client = client
         self.host_min_interval = host_min_interval
         self._last_at: dict[str, float] = {}
+        self._cache: dict[str, Fetched | None] = {}
         self.responses = 0  # 상태 코드와 상관없이 응답을 받은 횟수(대상에 닿았는지 판단)
 
-    async def get(self, url: str, extra_headers: dict[str, str] | None = None) -> Fetched | None:
+    async def get_cached(self, url: str) -> Fetched | None:
+        """같은 점검에서 이미 받은 주소(홈페이지·JS 등)는 다시 요청하지 않는다. 요청 예산을 아낀다."""
+        if url not in self._cache:
+            self._cache[url] = await self.get(url)
+        return self._cache[url]
+
+    async def get(self, url: str, extra_headers: dict[str, str] | None = None, *,
+                  timeout: float = REQUEST_TIMEOUT) -> Fetched | None:
         self.budget.check()  # 중지 요청·제한 시간(ScanStopped)
         if self.budget.requests_used >= self.budget.requests_limit:
             log.info("요청 예산(%d건) 소진", self.budget.requests_limit)
@@ -156,7 +164,7 @@ class HttpClient:
         headers = {"User-Agent": USER_AGENT, **(extra_headers or {})}
         try:
             r = await self.client.get(url, headers=headers,
-                                      timeout=REQUEST_TIMEOUT, follow_redirects=False)
+                                      timeout=timeout, follow_redirects=False)
         except httpx.HTTPError as e:
             log.info("요청 실패 %s: %s", url, type(e).__name__)
             return None
