@@ -23,7 +23,14 @@ export class ApiError extends Error {
   }
 }
 
+// 이벤트의 detail.expired: 이 탭에서 로그인된 응답을 받은 뒤에 401이 왔는지.
+// 처음 들어와 세션이 없을 때(false)와 쓰는 도중 세션이 끝났을 때(true)를 로그인 화면이 구분한다.
 export const UNAUTHENTICATED_EVENT = 'a2d:unauthenticated'
+export type UnauthenticatedDetail = { expired: boolean }
+
+// 로그인 없이 부를 수 있는 주소. 이 응답으로는 세션이 있었는지 알 수 없다.
+const PUBLIC_PATHS = new Set(['/health', '/auth/login', '/auth/logout'])
+let hadSession = false
 
 type Method = 'GET' | 'POST' | 'PATCH'
 
@@ -33,6 +40,9 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
     : await callServer(method, path, body)
 
   if (status >= 200 && status < 300) {
+    if (path === '/auth/login') hadSession = true
+    else if (path === '/auth/logout') hadSession = false
+    else if (!PUBLIC_PATHS.has(path.split('?')[0])) hadSession = true
     return data as T
   }
 
@@ -45,7 +55,10 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
   )
 
   if (status === 401 && apiError.code === 'UNAUTHENTICATED') {
-    window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT))
+    // 여기서 hadSession을 지우지 않는다. 한 화면이 여러 요청을 동시에 보내면 401도 여러 번 오는데,
+    // 첫 번째만 expired=true가 되고 뒤의 것이 false로 덮어쓰기 때문이다.
+    const detail: UnauthenticatedDetail = { expired: hadSession }
+    window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT, { detail }))
   }
   throw apiError
 }

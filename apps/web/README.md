@@ -47,6 +47,7 @@ npm run dev                  # http://localhost:5173
 ```
 
 - 실제 백엔드에 붙일 때는 `.env.local`의 `VITE_USE_MOCK=false`로 바꾼다. `/api` 요청은 개발 서버가 `http://localhost:8000`(환경 변수 `A2D_API_TARGET`)으로 넘긴다.
+- 5173 포트가 이미 쓰이고 있으면 Vite가 5174 같은 다른 포트로 뜬다. 그 주소를 `apps/api/.env`의 `A2D_WEB_ORIGIN`에 넣지 않으면 로그인부터 `403 FORBIDDEN_ORIGIN`이다. 포트를 고정하려면 `npm run dev -- --port 5180 --strictPort`.
 - 가짜 응답 시연 흐름: 대시보드에서 "재점검"을 누를 때마다 오늘 할 일 1번을 고친 것으로 보고 안전 점수가 20 → 30 → 49 → 100으로 오른다. 그다음 재점검에서는 새 테스트 서버(`test.`)가 열려 새 노출 알림이 뜬다. 상태는 메모리에만 있어 새로고침하면 처음으로 돌아간다.
 - 가짜 응답 계정: `admin@jobnest.test` / `a2d-demo`
 - API 확인 화면: http://localhost:5173/dev/api (개발 모드에서만 열림)
