@@ -3,7 +3,7 @@
 #
 #   ./a2d-demo.sh up              피공격 서버(target) → 백엔드(apps/api, Docker) → 화면(apps/web) 순서로 띄우기
 #   ./a2d-demo.sh down            화면·백엔드·피공격 서버 내리기 (점검 기록은 남김)
-#   ./a2d-demo.sh status          세 부분의 상태와 LLM 연결 보기
+#   ./a2d-demo.sh status          세 부분의 상태, LLM 연결, 다음 점검이 시나리오 몇 회차인지
 #   ./a2d-demo.sh reset           새 테이크 준비: 결함을 시연 프로필로 되돌리고 점검 기록을 지운다
 #   ./a2d-demo.sh verify [값]     등록 화면의 TXT 값을 시연 DNS에 넣기 (값을 비우면 백엔드에서 읽어 온다)
 #   ./a2d-demo.sh logs api|web|target
@@ -169,35 +169,73 @@ llm_report() {
   say "   3) (cd apps/api && docker compose up -d) 로 백엔드만 다시 띄운다"
 }
 
-# ------------------------------------------------------------------ 소유권 TXT
+# ------------------------------------------------------------------ 백엔드에서 시연 상태 읽기
 
-# 값을 주지 않으면 백엔드에 로그인해 시연 도메인의 TXT 값을 읽는다.
-txt_from_api() {
-  need python3 "아니면 값을 직접 주세요: ./a2d-demo.sh verify a2d-verify=<값>"
-  local jar domain
-  jar="$(mktemp)"
-  domain="$(target_get DEMO_DOMAIN)"
-  # 로그인 요청에는 허용된 화면 주소를 Origin으로 붙여야 한다(API 명세 3장).
-  # A2D_WEB_PORT를 up 때와 다르게 줘도 되도록 화면 포트가 아니라 A2D_WEB_ORIGIN에서 고른다.
-  A2D_EMAIL="$(api_get A2D_ADMIN_EMAIL)" A2D_PASSWORD="$(api_get A2D_ADMIN_PASSWORD)" python3 -c '
-import json, os
-print(json.dumps({"email": os.environ["A2D_EMAIL"], "password": os.environ["A2D_PASSWORD"]}))' \
-    | curl -s -f -o /dev/null -c "$jar" -H "Origin: $(api_origin)" -H "Content-Type: application/json" \
-        --data-binary @- "$(api_url)/auth/login" \
-    || { rm -f "$jar"; die "백엔드 로그인 실패. apps/api/.env의 계정과 A2D_WEB_ORIGIN을 확인하세요."; }
-  curl -s -f -b "$jar" "$(api_url)/domains" | DOMAIN="$domain" python3 -c '
-import json, os, sys
-items = json.load(sys.stdin)["items"]
-match = [d for d in items if d["domain"] == os.environ["DOMAIN"]]
-if match:
-    print(match[0]["txt_record"]["value"])' || true
-  rm -f "$jar"
+# apps/api/.env 계정으로 로그인해 시연 도메인(target/.env의 DEMO_DOMAIN) 정보를 한 줄로 출력한다.
+#   demo_api txt    → TXT 값 (등록 전이면 빈 줄)
+#   demo_api state  → "<verify_status> <끝난 점검 수>" (등록 전이면 "none 0")
+# 로그인 요청에는 허용된 화면 주소를 Origin으로 붙여야 한다(API 명세 3장). A2D_WEB_PORT를 up 때와
+# 다르게 줘도 되도록 화면 포트가 아니라 A2D_WEB_ORIGIN의 첫 값을 쓴다.
+demo_api() {
+  need python3 "python3이 없으면 TXT 값을 직접 주세요: ./a2d-demo.sh verify a2d-verify=<값>"
+  A2D_API="$(api_url)" A2D_ORIGIN="$(api_origin)" A2D_DOMAIN="$(target_get DEMO_DOMAIN)" \
+  A2D_EMAIL="$(api_get A2D_ADMIN_EMAIL)" A2D_PASSWORD="$(api_get A2D_ADMIN_PASSWORD)" \
+  python3 - "$1" <<'PY'
+import http.cookiejar, json, os, sys, urllib.request
+
+api, mode = os.environ["A2D_API"], sys.argv[1]
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+def call(path, body=None):
+    req = urllib.request.Request(api + path, method="POST" if body else "GET",
+                                 data=json.dumps(body).encode() if body else None,
+                                 headers={"Origin": os.environ["A2D_ORIGIN"], "Content-Type": "application/json"})
+    with opener.open(req, timeout=10) as r:
+        return json.load(r)
+
+try:
+    call("/auth/login", {"email": os.environ["A2D_EMAIL"], "password": os.environ["A2D_PASSWORD"]})
+except Exception as e:
+    sys.exit(f"[a2d] 백엔드 로그인 실패({e}). apps/api/.env의 계정과 A2D_WEB_ORIGIN을 확인하세요.")
+match = [d for d in call("/domains")["items"] if d["domain"] == os.environ["A2D_DOMAIN"]]
+if mode == "txt":
+    print(match[0]["txt_record"]["value"] if match else "")
+elif not match:
+    print("none 0")
+else:
+    d = match[0]
+    done = [h for h in call(f"/domains/{d['domain_id']}/history")["items"] if h["status"] == "done"]
+    print(d["verify_status"], len(done))
+PY
 }
+
+# 가짜 엔진(fixture)은 끝까지 돈 점검 수로 시나리오 회차를 정한다(apps/api/a2d/engine/fixture.py).
+# 피공격 서버를 고쳤는지는 보지 않으므로, 다음 점검이 몇 회차인지 보여 줘 순서가 어긋나지 않게 한다.
+scenario_report() {
+  local engine state verify finished next
+  SCENARIO_FINISHED=0
+  engine="$(api_get A2D_ENGINE)"
+  [ "${engine:-fixture}" = fixture ] || return 0
+  state="$(demo_api state 2>/dev/null)" || { say "시연 진행: 백엔드에서 읽지 못함"; return 0; }
+  verify="${state% *}"; finished="${state#* }"; next=$((finished + 1)); SCENARIO_FINISHED=$finished
+  case "$verify" in
+    none)     say "시연 진행: 도메인 등록 전 (등록 → ./a2d-demo.sh verify → 확인 → 점검)"; return 0 ;;
+    pending|failed) say "시연 진행: 소유권 확인 전 (./a2d-demo.sh verify → 화면에서 확인)"; return 0 ;;
+  esac
+  case "$next" in
+    1) say "시연 진행: 다음 점검은 1회차 → #16 #8 #18, 20점 F" ;;
+    2) say "시연 진행: 끝난 점검 1회. 다음 점검은 2회차 → 세 가지 해결, 100점 A (그 전에 ./a2d-demo.sh fix 16 8 18)" ;;
+    3) say "시연 진행: 끝난 점검 2회. 다음 점검은 3회차 → 새 테스트 서버 알림 (그 전에 ./a2d-demo.sh test-server on)" ;;
+    *) say "시연 진행: 끝난 점검 ${finished}회. 시나리오가 끝났습니다. 다시 하려면 ./a2d-demo.sh reset" ;;
+  esac
+}
+
+# ------------------------------------------------------------------ 소유권 TXT
 
 verify() {
   local value="${1:-}"
   if [ -z "$value" ]; then
-    value="$(txt_from_api)"
+    value="$(demo_api txt)"
     [ -n "$value" ] || die "백엔드에 $(target_get DEMO_DOMAIN) 등록이 없습니다. 화면에서 도메인을 먼저 등록하세요."
   fi
   target verify "$value"
@@ -215,7 +253,11 @@ up() {
   web_up
   status_line
   say "화면: $WEB_URL  (계정은 apps/api/.env의 A2D_ADMIN_EMAIL)"
-  say "등록 화면에서 도메인 $(target_get DEMO_DOMAIN)을 넣은 뒤 ./a2d-demo.sh verify"
+  scenario_report
+  # up은 점검 기록을 지우지 않는다. 지난 테이크 기록이 남아 있으면 시나리오가 중간부터 이어진다
+  if [ "$SCENARIO_FINISHED" -gt 0 ]; then
+    say "주의: 지난 테이크의 점검 기록이 남아 있습니다. 처음부터 하려면 ./a2d-demo.sh reset"
+  fi
 }
 
 down() {
@@ -232,7 +274,8 @@ reset() {
   api_compose up -d
   wait_api
   web_up
-  say "도메인을 다시 등록해야 합니다. TXT 값이 새로 나오므로 등록 뒤 ./a2d-demo.sh verify"
+  say "준비됐습니다. 브라우저는 새로 고침하거나 $WEB_URL/login 을 새로 여세요(이전 세션은 끊겼습니다)."
+  say "도메인을 다시 등록하면 TXT 값이 새로 나옵니다. 등록 뒤 ./a2d-demo.sh verify"
 }
 
 status_line() {
@@ -253,6 +296,7 @@ status() {
   if curl -s -o /dev/null --max-time 2 "$(api_url)/health"; then
     say "백엔드: 동작 중 ($(api_url))"
     status_line
+    scenario_report
   else
     say "백엔드: 꺼짐"
   fi
