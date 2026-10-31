@@ -83,10 +83,10 @@ cd ../../target
 | dnspython 2.7.0 | A2D 백엔드 DNS TXT 소유권 확인 | ISC |
 | bcrypt 4.2.1 | A2D 백엔드 비밀번호 해시 | Apache 2.0 |
 | pytest 8.3.4 | A2D 백엔드 테스트 | MIT |
-| React 19 · Vite 8 · TypeScript | 프런트엔드 화면과 개발 서버 | MIT · MIT · Apache 2.0 |
-| SEED Design (@seed-design/react·css·vite-plugin·cli) | 프런트엔드 디자인 시스템(당근). 브랜드 색은 A2D 색으로 덮어씀 | Apache 2.0 |
-| @karrotmarket/react-monochrome-icon | 프런트엔드 아이콘 | Apache 2.0 |
-| React Router | 프런트엔드 화면 이동 | MIT |
-| Motion | 프런트엔드 화면 전환·숫자 애니메이션 | MIT |
-| Pretendard | 프런트엔드 글꼴(오프라인용으로 패키지에 포함) | OFL-1.1 |
-| Vitest · jsdom · Testing Library | 프런트엔드 테스트(개발용) | MIT |
+| React 19.3.1 · Vite 8.3.5 · TypeScript 7.0.2 | 프런트엔드 화면과 개발 서버 | MIT · MIT · Apache 2.0 |
+| [SEED Design](https://github.com/daangn/seed-design) (@seed-design/react 3.1.0 · css 3.1.0 · vite-plugin 2.1.1 · cli 1.7.3) | 프런트엔드 디자인 시스템(주식회사 당근마켓). UI 스니펫을 `apps/web/seed-design/`에 복사해 쓰고 LICENSE·NOTICE를 함께 둠. 브랜드 색은 A2D 색으로 덮어쓰고 당근 브랜드 리소스는 쓰지 않음 | Apache 2.0 |
+| @karrotmarket/react-monochrome-icon 1.32.0 | 프런트엔드 아이콘(SEED 아이콘 세트) | Apache 2.0 |
+| React Router 7.18.5 | 프런트엔드 화면 이동 | MIT |
+| Motion 14.9.0 | 프런트엔드 화면 전환·숫자 애니메이션 | MIT |
+| Pretendard 1.3.9 | 프런트엔드 글꼴(오프라인용으로 패키지에 포함) | OFL-1.1 |
+| Vitest 5.0.5 · jsdom 30.1.3 · Testing Library | 프런트엔드 테스트(개발용) | MIT |
