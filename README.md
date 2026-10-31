@@ -83,3 +83,10 @@ cd ../../target
 | dnspython 2.7.0 | A2D 백엔드 DNS TXT 소유권 확인 | ISC |
 | bcrypt 4.2.1 | A2D 백엔드 비밀번호 해시 | Apache 2.0 |
 | pytest 8.3.4 | A2D 백엔드 테스트 | MIT |
+| React 19 · Vite 8 · TypeScript | 프런트엔드 화면과 개발 서버 | MIT · MIT · Apache 2.0 |
+| SEED Design (@seed-design/react·css·vite-plugin·cli) | 프런트엔드 디자인 시스템(당근). 브랜드 색은 A2D 색으로 덮어씀 | Apache 2.0 |
+| @karrotmarket/react-monochrome-icon | 프런트엔드 아이콘 | Apache 2.0 |
+| React Router | 프런트엔드 화면 이동 | MIT |
+| Motion | 프런트엔드 화면 전환·숫자 애니메이션 | MIT |
+| Pretendard | 프런트엔드 글꼴(오프라인용으로 패키지에 포함) | OFL-1.1 |
+| Vitest · jsdom · Testing Library | 프런트엔드 테스트(개발용) | MIT |
