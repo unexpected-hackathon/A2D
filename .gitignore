@@ -52,3 +52,6 @@ Thumbs.db
 # 피공격 서버(target)에 일부러 심는 결함 파일(.env, backup.zip 등)은 예외로 추적한다.
 # 위 규칙에 걸리는 결함 파일은 target/planted/ 아래에 둔다.
 !target/planted/**
+
+# 시연 스크립트(a2d-demo.sh)의 화면 프로세스 번호와 로그
+/.demo/
