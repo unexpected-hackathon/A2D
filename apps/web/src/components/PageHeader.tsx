@@ -13,7 +13,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ eyebrow, title, description, actions }: PageHeaderProps) {
   return (
-    <HStack justify="space-between" align="flex-end" gap="x4" wrap className="a2d-ph">
+    <HStack justify="space-between" align="flex-end" gap="x4" wrap>
       <div className="a2d-ph__text">
         {eyebrow && <p className="a2d-ph__eyebrow">{eyebrow}</p>}
         <h1 className="a2d-ph__title">{title}</h1>

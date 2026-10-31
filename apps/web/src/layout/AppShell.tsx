@@ -20,8 +20,8 @@ import {
   IconPlusLine,
 } from '@karrotmarket/react-monochrome-icon'
 import { HStack, Icon, Text, VStack, useBreakpointValue } from '@seed-design/react'
-import { useEffect, type CSSProperties } from 'react'
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { Avatar } from 'seed-design/ui/avatar'
 import { Badge } from 'seed-design/ui/badge'
 import { IdentityPlaceholder } from 'seed-design/ui/identity-placeholder'
@@ -39,11 +39,13 @@ import { ScanBanner } from './ScanBanner'
 import { SheetWash } from './SheetWash'
 
 // 탭 세 개: 위(왼쪽)부터 주황·흰색·갈색. 색은 global.css의 --a2d-paper-* 변수.
-const PAPERS: (IndexTab & { path: string })[] = [
+const PAPERS: IndexTab[] = [
   { key: 'dashboard', path: '/dashboard', label: '대시보드', icon: <IconHouseFill />, fill: 'var(--a2d-paper-orange)', ink: '#ffffff' },
   { key: 'guide', path: '/guide', label: '조치 가이드', icon: <IconCheckmarkShieldFill />, fill: 'var(--a2d-paper-white)', ink: 'var(--a2d-navy)' },
   { key: 'history', path: '/history', label: '기록', icon: <IconClockFill />, fill: 'var(--a2d-paper-brown)', ink: '#ffffff' },
 ]
+// 어느 탭에도 맞지 않는 주소(/dev/api 등)일 때의 바탕: 아무 탭도 고르지 않고 중립색 종이를 깐다.
+const NEUTRAL = { key: 'none', fill: 'var(--a2d-sheet)', ink: 'var(--a2d-navy)' }
 
 // 점검 대상 도메인. 누르면 다른 도메인으로 바꾸거나 새 도메인을 추가한다.
 function DomainSwitcher() {
@@ -138,18 +140,25 @@ export function AppShell() {
 
 function Shell() {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, hash } = useLocation()
+  const navType = useNavigationType()
   const { domain } = useDomain()
   // 768px 미만(휴대폰)에서는 탭을 위쪽에 가로로 붙인다.
   const horizontal = useBreakpointValue({ base: true, md: false }) ?? false
-  const { hash } = useLocation()
-  const paper = PAPERS.find((p) => pathname.startsWith(p.path)) ?? PAPERS[0]
-  const active = paper.key
+  const tab = PAPERS.find((p) => pathname.startsWith(p.path))
+  const paper = tab ?? NEUTRAL
 
-  // 다른 종이로 넘어가면 맨 위에서 시작한다(#task-N처럼 위치를 정해 온 경우는 그대로 둔다).
+  // 제목 글자색. 바탕은 물결이 쓸고 지나가며 늦게 바뀌므로, 글자색도 새 색이 제목 자리를 덮은 뒤(onCover)에 바꾼다.
+  const [ink, setInk] = useState(paper.ink)
+
+  // 다른 탭으로 넘어가면 맨 위에서 시작한다. 같은 탭 안의 이동(/guide → /guide/:scanId), 뒤로가기(브라우저가
+  // 스크롤 위치를 되돌린다), #task-N처럼 위치를 정해 온 경우는 그대로 둔다.
+  const prevPaper = useRef(paper.key)
   useEffect(() => {
-    if (!hash) window.scrollTo({ top: 0 })
-  }, [pathname, hash])
+    const changed = prevPaper.current !== paper.key
+    prevPaper.current = paper.key
+    if (changed && navType !== 'POP' && !hash) window.scrollTo({ top: 0 })
+  }, [paper.key, navType, hash])
 
   // 도메인을 바꾸면 key가 바뀌어 점검 상태도 새로 시작한다.
   return (
@@ -169,13 +178,13 @@ function Shell() {
         <div className="a2d-folder" data-orientation={horizontal ? 'horizontal' : 'vertical'}>
           <IndexTabs
             tabs={PAPERS}
-            activeKey={active}
+            activeKey={tab?.key ?? null}
             orientation={horizontal ? 'horizontal' : 'vertical'}
-            onSelect={(key) => navigate(PAPERS.find((p) => p.key === key)!.path)}
+            onSelect={(t) => navigate(t.path)}
           />
           {/* 내용 영역: 바탕은 고른 종이 색(SheetWash), 글자색은 그 종이의 ink */}
-          <main className="a2d-sheet" data-paper={active} style={{ '--a2d-ink': paper.ink } as CSSProperties}>
-            <SheetWash id={paper.key} fill={paper.fill} />
+          <main className="a2d-sheet" data-paper={paper.key} style={{ '--a2d-ink': ink } as CSSProperties}>
+            <SheetWash id={paper.key} fill={paper.fill} onCover={() => setInk(paper.ink)} />
             <div className="a2d-sheet__content">
               <VStack gap="x6">
                 <ScanBanner />

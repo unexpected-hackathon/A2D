@@ -241,6 +241,11 @@ body {
   .a2d-task-score { grid-column: 2; justify-self: start; }
 }
 
+/* 요약 모달 본문도 내용 영역과 같은 폭 기준을 쓴다(모달은 .a2d-sheet 밖에 그려진다) */
+.a2d-onepager {
+  container: sheet / inline-size;
+}
+
 /* 등급별 발견 수: 들어가는 만큼 한 줄에, 휴대폰에서는 2×2로 */
 .a2d-counts {
   display: grid;
@@ -276,7 +281,8 @@ body {
   --a2d-paper-orange: #e8590c;
   --a2d-paper-white: #ffffff;
   --a2d-paper-brown: #8b5a3c;
-  --a2d-sheet: #fbf8f4;
+  --a2d-sheet: #fbf8f4; /* 어느 탭에도 맞지 않는 주소일 때의 중립 바탕 */
+  --a2d-header-h: 84px; /* 머리글 높이. 세로 탭 띠가 이 아래에 붙는다 */
   /* 파일 색인 탭 (세로) */
   --a2d-tabcol: 68px; /* 탭이 놓이는 왼쪽 칸의 폭 */
   --a2d-tab-w: 62px; /* 뒤에 끼운 탭의 폭 */
@@ -285,7 +291,6 @@ body {
   --a2d-tab-step: 180px; /* 탭 하나의 세로 간격 */
   /* 파일 색인 탭 (가로, 휴대폰) */
   --a2d-tabrow: 48px;
-  --a2d-tab-step-h: 118px;
 }
 
 .a2d-app {
@@ -304,6 +309,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  box-sizing: border-box;
+  min-height: var(--a2d-header-h);
   padding: 14px 0;
   background: color-mix(in srgb, var(--seed-color-bg-layer-basement) 88%, transparent);
   backdrop-filter: blur(8px);
@@ -375,7 +382,7 @@ body {
 .a2d-sheet {
   container: sheet / inline-size;
   position: relative;
-  z-index: 2; /* 뒤에 끼운 탭(1)보다 위, 선택한 탭(3)보다 아래 */
+  z-index: 2; /* 탭 띠(3) 아래. 선택한 탭이 이 위로 8px 겹친다 */
   /* 색을 쓸고 지나가는 덮개가 탭 위로 나가지 않게 여기서 자른다 */
   overflow: clip;
   isolation: isolate;
@@ -395,7 +402,7 @@ body {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 104%;
+  width: 112%; /* SheetWash.tsx WIDTH와 같은 값 */
   pointer-events: none;
 }
 .a2d-sheet__wash svg {
@@ -442,25 +449,19 @@ body {
 /* 파일 색인 탭 */
 .a2d-tabs {
   position: relative;
-}
-.a2d-tabs--vertical {
-  /* 스크롤해도 머리글 아래에 붙어 따라온다 */
-  position: sticky;
-  top: 84px;
-  height: calc(24px + var(--a2d-tab-step) * 2 + var(--a2d-tab-h));
+  /* 내용 영역(2)보다 위. 선택한 탭만 내용 영역 위로 겹치고, 나머지 탭은 가장자리까지만 온다 */
+  z-index: 3;
 }
 .a2d-tab {
   appearance: none;
   border: 0;
   font: inherit;
   cursor: pointer;
-  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   background: var(--tab-fill);
-  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease, opacity 0.2s ease;
+  transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease, flex-grow 0.25s ease, opacity 0.2s ease;
 }
 .a2d-tab:focus-visible {
   outline: 2px solid currentColor;
@@ -484,9 +485,16 @@ body {
   font-weight: 800;
 }
 
-/* 세로: 왼쪽 가장자리. 장(--i)마다 한 칸씩 아래로 */
+/* 세로: 왼쪽 가장자리. 장(--i)마다 한 칸씩 아래로. 띠는 스크롤해도 머리글 아래에 붙어 따라온다 */
+.a2d-tabs--vertical {
+  position: sticky;
+  top: var(--a2d-header-h);
+  height: calc(24px + (var(--n, 3) - 1) * var(--a2d-tab-step) + var(--a2d-tab-h));
+}
 .a2d-tabs--vertical .a2d-tab {
+  position: absolute;
   flex-direction: column;
+  gap: 10px;
   top: calc(24px + var(--i, 0) * var(--a2d-tab-step));
   left: calc(var(--a2d-tabcol) - var(--a2d-tab-w));
   width: var(--a2d-tab-w);
@@ -494,14 +502,15 @@ body {
   border-radius: 16px 0 0 16px;
   z-index: 1;
   opacity: 0.94;
-  box-shadow: -4px 3px 10px rgb(16 32 47 / 0.1);
+  /* 그림자는 왼쪽으로만. 오른쪽(내용 영역) 위로 번지지 않게 spread를 줄인다 */
+  box-shadow: -6px 3px 8px -2px rgb(16 32 47 / 0.12);
 }
 .a2d-tabs--vertical .a2d-tab[data-active="true"] {
   left: 0;
   width: var(--a2d-tab-w-active);
-  z-index: 3;
+  z-index: 2;
   opacity: 1;
-  box-shadow: -6px 4px 14px rgb(16 32 47 / 0.14);
+  box-shadow: -8px 4px 12px -2px rgb(16 32 47 / 0.16);
 }
 .a2d-tabs--vertical .a2d-tab__label {
   writing-mode: vertical-rl;
@@ -509,24 +518,45 @@ body {
   letter-spacing: 0.08em;
 }
 
-/* 가로(휴대폰): 위쪽 가장자리. 장마다 오른쪽으로 한 칸씩 */
+/* 가로(휴대폰): 위쪽 가장자리. 탭 폭은 글자 길이대로, 선택한 탭이 남는 폭을 채운다.
+   탭끼리 10px 겹치므로 오른쪽 여백을 그만큼 더 둬 글자가 가려지지 않는다 */
 .a2d-tabs--horizontal {
+  display: flex;
+  align-items: flex-start;
   height: var(--a2d-tabrow);
 }
 .a2d-tabs--horizontal .a2d-tab {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
   flex-direction: row;
-  left: calc(var(--i, 0) * var(--a2d-tab-step-h));
+  gap: 6px;
   top: 8px;
-  height: calc(var(--a2d-tabrow) + 8px);
-  padding: 0 16px;
+  height: calc(var(--a2d-tabrow) - 8px);
+  padding: 0 14px 0 10px;
   border-radius: 16px 16px 0 0;
-  z-index: 1;
+  /* 앞 탭이 뒤 탭 위에 놓인다(색인 모양). 선택한 탭은 맨 앞 */
+  z-index: calc(10 - var(--i, 0));
   opacity: 0.94;
   box-shadow: 0 -3px 10px rgb(16 32 47 / 0.08);
 }
+.a2d-tabs--horizontal .a2d-tab + .a2d-tab {
+  margin-left: -10px;
+}
+.a2d-tabs--horizontal .a2d-tab__icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.a2d-tabs--horizontal .a2d-tab__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .a2d-tabs--horizontal .a2d-tab[data-active="true"] {
+  flex-grow: 1;
   top: 0;
-  z-index: 3;
+  height: calc(var(--a2d-tabrow) + 8px); /* 내용 영역 위로 8px 겹쳐 같은 색으로 이어진다 */
+  z-index: 20;
   opacity: 1;
 }
 
