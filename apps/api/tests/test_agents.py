@@ -387,6 +387,9 @@ def test_attack_runs_tools_until_finish():
     names = [t["function"]["name"] for t in body["tools"]]
     assert names == ["list_assets", "probe_http", "check_unauth_api", "finish_scan"]
     assert "example.test" not in json.dumps(fake.requests, ensure_ascii=False)
+    # 시스템 프롬프트의 예산 숫자는 실제 Budget에서 온다(하드코딩 아님)
+    system = body["messages"][0]["content"]
+    assert "도구 20회" in system and "요청 300건" in system
 
 
 def test_attack_guard_rejection_is_audited():

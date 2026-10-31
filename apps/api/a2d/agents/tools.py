@@ -100,9 +100,14 @@ ATTACK_TOOLS: tuple[ToolSpec, ...] = (
 
 TOOLS: dict[str, ToolSpec] = {t.name: t for t in ATTACK_TOOLS}
 
-# 대상에 실제 요청을 보내는 점검 핸들러(probe_http, check_unauth_api 등)는 팀이 따로 만들어 여기에 등록한다.
-# 비어 있으면 Attack 에이전트는 요청을 보내지 않는 기본 도구(list_assets·finish_scan)만 쓸 수 있다.
-# (list_assets·finish_scan 핸들러는 Guard 안에 들어 있다.) run_attack이 이 표를 Guard에 끼운다.
+# 대상에 실제 요청을 보내는 점검 핸들러의 '기본/주입용' 표. 실제로는 run_attack에 핸들러를 직접 넘기고
+# (service가 점검 1회마다 ctx로 만든다), 이 표는 비어 있어 아무것도 넘기지 않으면 추가 점검을 건너뛰게 한다.
+# 핸들러를 여기에 등록하려면 점검 1회의 budget·ctx를 클로저로 들고 있어야 한다. 가드는 요청 예산 상한을
+# '보기만' 하므로, 핸들러가 직접 지켜야 할 것이 있다(agents.handlers.AttackProbe가 그 예다):
+#   - 요청을 보낼 때마다 ctx.budget.requests_used += 1 (가드는 올리지 않는다)
+#   - 요청 사이 ctx.budget.check() (중지 요청·제한 시간 받기)
+#   - 발견은 ctx.add_finding으로 저장소에 기록하고 결과에는 발견 ID·가린 증거만 담는다
+# 비어 있으면 Attack 에이전트는 기본 도구(list_assets·finish_scan, Guard 내장)만 쓴다.
 ATTACK_HANDLERS: dict[str, "Handler"] = {}
 
 
