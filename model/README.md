@@ -173,7 +173,7 @@ vllm serve ~/models/Qwen3-8B \
 
 ### 8. 내 PC에서 터널 열기
 
-내 PC의 `model/.env`에 `GPU_SSH_HOST`·`GPU_SSH_PORT`와 서버 `.env`의 `VLLM_API_KEY` 값을 적는다. VPN을 연결한 상태에서 실행한다.
+내 PC의 `model/.env`에 `GPU_SSH_HOST`·`GPU_SSH_PORT`·`GPU_SSH_USER`와 서버 `.env`의 `VLLM_API_KEY` 값만 적으면 된다. 적지 않은 키는 `.env.example`의 기본값을 쓴다. VPN을 연결한 상태에서 실행한다.
 
 ```bash
 ./llm.sh tunnel          # 열어 둔 동안만 연결된다. 다른 터미널에서:

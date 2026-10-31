@@ -33,15 +33,14 @@ load_env() {
     chmod 600 .env
     log ".env.example → .env 복사"
   fi
+  # .env.example을 기본값으로 읽고 .env로 덮어쓴다. .env에는 바꿀 키만 적어도 된다
+  # (내 PC에는 GPU_SSH_*와 VLLM_API_KEY만, 예전 .env에 없는 새 키는 기본값).
   set -a
+  # shellcheck disable=SC1091
+  . ./.env.example
   # shellcheck disable=SC1091
   . ./.env
   set +a
-  : "${MODEL_ID:?}" "${MODEL_REVISION:?}" "${MODEL_DIR:?}" "${VLLM_VERSION:?}"
-  VLLM_HOST="${VLLM_HOST:-127.0.0.1}"
-  VLLM_PORT="${VLLM_PORT:-8000}"
-  SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3-8b}"
-  UV_VERSION="${UV_VERSION:-0.13.6}"  # 예전 .env에는 이 키가 없다
 }
 
 # BSD·GNU sed 차이를 피하려고 awk로 고친다 (target/demo.sh와 같은 방식).
