@@ -137,7 +137,9 @@ class FakeTarget:
         if path in ("/backup.zip", "/db.sql"):
             return resp(404, "nf") if 8 in fx else resp(200, "PK\x03\x04zipdata", media="application/zip")
         if path in ("/.env", "/.git/HEAD", "/.git/config"):
-            return resp(404, "nf") if 9 in fx else resp(200, "SECRET=1\n", media="text/plain")
+            body = {"/.env": "SECRET=1\n", "/.git/HEAD": "ref: refs/heads/main\n",
+                    "/.git/config": "[core]\n\tbare = false\n"}[path]
+            return resp(404, "nf") if 9 in fx else resp(200, body, media="text/plain")
         if path == "/uploads/":
             return resp(403, "blocked") if 10 in fx else resp(200, UPLOADS)
         if path == "/server-status":
