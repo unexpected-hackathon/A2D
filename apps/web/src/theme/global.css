@@ -194,10 +194,11 @@ body {
 }
 
 /* ---------- 반응형 배치 ----------
- * SEED 기본 구간(lg = 1280px)은 왼쪽 메뉴 240px를 뺀 우리 화면에 맞지 않아 직접 정한다.
- *   ~767px   휴대폰: 한 단, 왼쪽 메뉴는 접힘(AppShell)
- *   768~1023 태블릿: 한 단
- *   1024px~  노트북 이상: 두 단
+ * 화면 폭이 아니라 "내용 영역(.a2d-sheet) 폭"을 기준으로 바꾼다(container query).
+ * 왼쪽 종이 띠가 있든, 휴대폰처럼 위에 있든 실제 남은 폭에 맞춰 배치된다.
+ *   ~719px   한 단
+ *   720px~   점수 카드 : 오늘 할 일 = 2 : 3, 기록 목록 : 상세 = 1 : 2
+ *   900px~   자산·발견 목록 두 단
  */
 .a2d-grid {
   display: grid;
@@ -208,12 +209,12 @@ body {
 .a2d-grid > * {
   min-width: 0;
 }
-@media (min-width: 1024px) {
+@container sheet (min-width: 720px) {
   .a2d-grid--hero { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
   .a2d-grid--side { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: start; }
 }
 /* 자산·발견 목록은 줄마다 배지가 여러 개라 더 넓어야 두 단이 된다 */
-@media (min-width: 1280px) {
+@container sheet (min-width: 900px) {
   .a2d-grid--half { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -235,7 +236,7 @@ body {
 .a2d-task-score {
   justify-self: end;
 }
-@media (max-width: 599px) {
+@container sheet (max-width: 559px) {
   .a2d-task-grid { grid-template-columns: 36px minmax(0, 1fr) 16px; }
   .a2d-task-score { grid-column: 2; justify-self: start; }
 }
@@ -246,7 +247,7 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 8px;
 }
-@media (max-width: 479px) {
+@container sheet (max-width: 439px) {
   .a2d-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -261,11 +262,304 @@ body {
   flex: 1 1 220px;
   min-width: 0;
 }
-@media (max-width: 479px) {
+@container sheet (max-width: 439px) {
   .a2d-score-body { justify-content: center; }
 }
 
 /* 글자가 들어가는 늘어나는 칸: 한 글자씩 끊기지 않게 */
 .a2d-min0 {
   min-width: 0;
+}
+
+/* ---------- 공통 틀: 머리글 + 겹친 종이 폴더 ---------- */
+:root {
+  --a2d-paper-orange: #e8590c;
+  --a2d-paper-white: #ffffff;
+  --a2d-paper-brown: #8b5a3c;
+  --a2d-sheet: #fbf8f4; /* 폴더 바탕(종이 뒤에 보이는 색) */
+  --a2d-tab-step: 132px; /* 세로 띠: 장마다 글자를 내리는 간격 */
+  --a2d-tab-step-h: 92px; /* 가로 띠(휴대폰): 장마다 글자를 미는 간격 */
+  --a2d-paper: 76px; /* 세로 종이 한 칸의 폭 */
+  --a2d-paper-h: 46px; /* 휴대폰: 가로 종이 한 칸의 높이 */
+}
+@media (max-width: 1023px) {
+  :root { --a2d-paper: 64px; }
+}
+
+.a2d-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0 24px 24px;
+}
+
+/* 머리글: 위에 고정. 왼쪽 로고·점검 대상, 오른쪽 사용자 */
+.a2d-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  background: color-mix(in srgb, var(--seed-color-bg-layer-basement) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+.a2d-brand,
+.a2d-domain,
+.a2d-user {
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.a2d-brand {
+  display: flex;
+  padding: 4px;
+  border-radius: 10px;
+}
+.a2d-brand__icon {
+  display: none;
+  border-radius: 8px;
+}
+.a2d-domain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  max-width: 340px;
+  padding: 8px 12px 8px 14px;
+  border-radius: 14px;
+  background: var(--seed-color-bg-layer-default);
+  border: 1px solid var(--seed-color-stroke-neutral-subtle);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.a2d-domain:hover {
+  border-color: var(--seed-color-stroke-brand-weak);
+  box-shadow: 0 4px 14px rgb(16 32 47 / 0.06);
+}
+.a2d-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 14px;
+}
+.a2d-user:hover {
+  background: var(--seed-color-bg-neutral-weak);
+}
+.a2d-brand:focus-visible,
+.a2d-domain:focus-visible,
+.a2d-user:focus-visible {
+  outline: 2px solid var(--seed-color-stroke-brand-solid);
+  outline-offset: 2px;
+}
+
+/* 큰 카드(폴더): 왼쪽에 종이 띠, 오른쪽에 내용 */
+.a2d-folder {
+  flex: 1;
+  display: grid;
+  grid-template-columns: calc(var(--a2d-paper) * 3) minmax(0, 1fr);
+  border-radius: 28px;
+  /* hidden은 sticky(띠 글자 따라오기)를 막는다. clip은 모서리만 자르고 스크롤 기준을 바꾸지 않는다 */
+  overflow: clip;
+  background: var(--a2d-sheet);
+  box-shadow: 0 1px 2px rgb(16 32 47 / 0.06), 0 12px 32px rgb(16 32 47 / 0.08);
+}
+.a2d-folder[data-orientation="horizontal"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: calc(var(--a2d-paper-h) * 3) auto;
+}
+
+.a2d-sheet {
+  container: sheet / inline-size;
+  position: relative;
+  min-width: 0;
+  padding: 32px 40px 40px;
+  color: var(--a2d-ink, var(--seed-color-fg-neutral));
+}
+/* 바탕색과 물결 overlay는 내용 뒤에 깔린다 */
+.a2d-sheet__bg {
+  position: absolute;
+  inset: 0;
+}
+.a2d-sheet__wash {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 104%;
+  pointer-events: none;
+}
+.a2d-sheet__wash svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.a2d-sheet__content {
+  position: relative;
+  z-index: 1;
+}
+
+/* 화면 제목: 바탕(종이 색)에 맞춘 글자색 */
+.a2d-ph__text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.a2d-ph__eyebrow,
+.a2d-ph__title,
+.a2d-ph__desc {
+  margin: 0;
+  color: var(--a2d-ink, var(--seed-color-fg-neutral));
+}
+.a2d-ph__eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+.a2d-ph__title {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.a2d-ph__desc {
+  font-size: 16px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+/* 겹친 종이 */
+.a2d-papers {
+  position: relative;
+  min-height: 100%;
+}
+.a2d-papers__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.a2d-papers__buttons {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.a2d-papers--horizontal .a2d-papers__buttons {
+  flex-direction: column;
+}
+.a2d-papers__tab {
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  position: relative;
+  flex: 0 0 var(--a2d-paper);
+  /* button은 안의 내용을 세로 가운데에 두므로, 세로 flex로 바꿔 위쪽에 붙인다 */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 0;
+  opacity: 0.72;
+  transition: opacity 0.2s ease;
+}
+/* 아이콘과 글자 묶음. 세로 띠에서는 머리글 아래에 붙어 스크롤을 따라온다. */
+.a2d-papers__face {
+  position: sticky;
+  /* 파일 색인 탭처럼 장(--i)마다 한 칸씩 내려 붙인다 */
+  top: calc(84px + var(--i, 0) * var(--a2d-tab-step));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: calc(28px + var(--i, 0) * var(--a2d-tab-step));
+}
+.a2d-papers--horizontal .a2d-papers__tab {
+  flex: 0 0 var(--a2d-paper-h);
+}
+.a2d-papers--horizontal .a2d-papers__face {
+  position: static;
+  height: 100%;
+  flex-direction: row;
+  /* 가로 띠에서는 장마다 오른쪽으로 한 칸씩 민다 */
+  padding: 0 0 0 calc(20px + var(--i, 0) * var(--a2d-tab-step-h));
+}
+.a2d-papers__tab:hover {
+  opacity: 0.92;
+}
+.a2d-papers__tab[data-active="true"] {
+  opacity: 1;
+}
+/* 지금 보고 있는 종이: 글자 옆에 작은 표시 */
+.a2d-papers__tab[data-active="true"] .a2d-papers__face::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: 18px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.a2d-papers--horizontal .a2d-papers__tab[data-active="true"] .a2d-papers__face::before {
+  top: 50%;
+  left: 8px;
+  width: 4px;
+  height: 18px;
+  transform: translateY(-50%);
+}
+.a2d-papers__tab:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -6px;
+  border-radius: 12px;
+}
+.a2d-papers__icon {
+  display: flex;
+  width: 22px;
+  height: 22px;
+}
+.a2d-papers__icon svg {
+  width: 100%;
+  height: 100%;
+}
+.a2d-papers__label {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.08em;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.a2d-papers__tab[data-active="true"] .a2d-papers__label {
+  font-weight: 800;
+}
+.a2d-papers--horizontal .a2d-papers__label {
+  writing-mode: horizontal-tb;
+  letter-spacing: 0;
+}
+
+/* 태블릿·휴대폰 */
+@media (max-width: 1023px) {
+  :root { --a2d-tab-step: 112px; }
+  .a2d-sheet { padding: 28px 28px 32px; }
+  .a2d-papers__label { font-size: 14px; }
+}
+@media (max-width: 767px) {
+  .a2d-app { padding: 0 12px 12px; }
+  .a2d-folder { border-radius: 22px; }
+  .a2d-sheet { padding: 20px 16px 24px; }
+  .a2d-brand__logo { display: none; }
+  .a2d-brand__icon { display: block; }
+  .a2d-user__text { display: none; }
+  .a2d-domain { max-width: none; }
 }
