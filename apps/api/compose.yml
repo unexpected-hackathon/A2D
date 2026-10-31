@@ -1,0 +1,29 @@
+# A2D 백엔드. target/의 시연 네트워크(a2d-demo)에 붙어 시연 DNS로 소유권 TXT를 확인한다.
+# target을 먼저 띄운다: (cd ../../target && ./demo.sh up)
+name: a2d-api
+
+services:
+  api:
+    build: .
+    image: a2d-api:local
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      A2D_DB_PATH: /srv/data/a2d.sqlite3
+      A2D_DNS_SERVER: ${A2D_DNS_SERVER:-10.253.53.53}
+    dns:
+      - ${A2D_DNS_SERVER:-10.253.53.53}
+    volumes:
+      - data:/srv/data
+    networks:
+      - a2d-demo
+    ports:
+      - "127.0.0.1:${A2D_API_PORT:-8000}:8000"
+
+networks:
+  a2d-demo:
+    external: true
+
+volumes:
+  data:
