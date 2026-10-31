@@ -302,10 +302,10 @@ def test_attack_skipped_on_fixture_engine_hides_cause(tmp_path):
     assert "가짜" not in attack["message"] and "fixture" not in attack["message"]
 
 
-# ------------------------------------------------------------------ trust는 예약 도메인만
+# ------------------------------------------------------------------ TXT 확인을 끄면(trust) 조회 없이 통과
 
-def test_trust_mode_skips_txt_only_for_reserved_tlds(client, monkeypatch):
-    """A2D_VERIFY_MODE=trust여도 실제 도메인은 TXT로 확인한다. 실제 엔진이 남의 사이트를 점검하지 않게 한다."""
+def test_trust_mode_skips_txt_for_every_domain(tmp_path, monkeypatch):
+    """A2D_VERIFY_MODE=trust면 예약 도메인이든 실제 도메인이든 TXT를 조회하지 않고 통과한다. dns 모드는 항상 TXT로 확인한다."""
     from a2d.service import Service
 
     looked: list[str] = []
@@ -315,43 +315,15 @@ def test_trust_mode_skips_txt_only_for_reserved_tlds(client, monkeypatch):
         return []
 
     monkeypatch.setattr(Service, "_lookup_txt", no_txt)
-    login(client)
-    for name in ("jobnest.test", "shop.example", "a.invalid", "app.localhost"):
-        d = client.post("/api/v1/domains", json={"domain": name}).json()
-        assert client.post(f"/api/v1/domains/{d['domain_id']}/verify").json()["verify_status"] == "verified"
-    assert looked == []  # 예약 도메인은 TXT를 조회하지 않는다
-
-    for name in ("jobnest.com", "test.co.kr", "mytest.io"):
-        d = client.post("/api/v1/domains", json={"domain": name}).json()
-        body = client.post(f"/api/v1/domains/{d['domain_id']}/verify").json()
-        assert body["verify_status"] == "failed" and "TXT 레코드를 찾지 못했습니다" in body["reason"]
-        assert client.post(f"/api/v1/domains/{d['domain_id']}/scans").status_code == 409
-    assert looked == ["_a2d-verify.jobnest.com", "_a2d-verify.test.co.kr", "_a2d-verify.mytest.io"]
-
-
-def test_trust_domains_pass_without_txt_only_in_trust_mode(tmp_path, monkeypatch):
-    """A2D_TRUST_DOMAINS에 적은 실제 도메인(하위 도메인 포함)은 trust에서 TXT 없이 통과한다. 비슷한 이름이나 dns 모드는 아니다."""
-    from a2d.service import Service
-
-    looked: list[str] = []
-
-    async def no_txt(self, name):
-        looked.append(name)
-        return []
-
-    monkeypatch.setattr(Service, "_lookup_txt", no_txt)
-    for mode in ("trust", "dns"):
+    names = ("jobnest.test", "codykata.com", "www.example.co.kr")
+    for mode, want in (("trust", "verified"), ("dns", "failed")):
         s = Settings(admin_email=EMAIL, admin_password=PASSWORD, db_path=str(tmp_path / f"{mode}.sqlite3"),
-                     web_origins=[ORIGIN], verify_mode=mode, fixture_step_sec=0, trust_domains=["codykata.com"])
+                     web_origins=[ORIGIN], verify_mode=mode, fixture_step_sec=0)
         with TestClient(create_app(s), base_url="http://testserver", headers={"Origin": ORIGIN}) as c:
             login(c)
-            got = {}
-            for name in ("codykata.com", "www.codykata.com", "notcodykata.com", "codykata.com.evil.io"):
+            for name in names:
                 d = c.post("/api/v1/domains", json={"domain": name}).json()
-                got[name] = c.post(f"/api/v1/domains/{d['domain_id']}/verify").json()["verify_status"]
+                assert c.post(f"/api/v1/domains/{d['domain_id']}/verify").json()["verify_status"] == want, (mode, name)
         if mode == "trust":
-            assert got == {"codykata.com": "verified", "www.codykata.com": "verified",
-                           "notcodykata.com": "failed", "codykata.com.evil.io": "failed"}
-        else:
-            assert set(got.values()) == {"failed"}  # dns 모드에서는 목록과 상관없이 TXT로 확인한다
-    assert "_a2d-verify.codykata.com" in looked and "_a2d-verify.notcodykata.com" in looked
+            assert looked == []  # trust는 TXT를 조회하지 않는다
+    assert looked == [f"_a2d-verify.{n}" for n in names]
