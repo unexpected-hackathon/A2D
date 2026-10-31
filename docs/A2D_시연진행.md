@@ -17,7 +17,7 @@
    | 키 | 값 |
    | --- | --- |
    | `A2D_ADMIN_EMAIL`, `A2D_ADMIN_PASSWORD` | 시연 계정. 화면에서 이 값으로 로그인한다 |
-   | `A2D_VERIFY_MODE` | `dns`(기본). `trust`면 TXT 확인 없이 통과한다. 손으로 바꾸지 말고 `./a2d-demo.sh txt-check on\|off`로 바꾼다 |
+   | `A2D_VERIFY_MODE` | `dns`(기본). `trust`면 `jobnest.test` 같은 예약 도메인만 TXT 확인 없이 통과한다(실제 도메인은 그대로 TXT로 확인). 손으로 바꾸지 말고 `./a2d-demo.sh txt-check on\|off`로 바꾼다 |
    | `A2D_WEB_ORIGIN` | `http://localhost:4173`이 들어 있어야 한다(기본값에 있다). 없으면 로그인부터 403이다 |
    | `A2D_ENGINE` | `a2d.engine.live:LiveEngine`(기본). 피공격 서버를 실제로 점검한다. 결과는 아래 3절대로 결함 상태가 정한다 |
    | `COMPOSE_FILE` | `compose.yml:compose.demo.yml`(기본). 시연 스크립트는 이 값과 상관없이 시연 네트워크에 붙인다 |

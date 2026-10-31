@@ -71,6 +71,9 @@ STAGE_NAMES = {
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 REPORT_TIMEOUT_SEC = 150  # 조치 가이드 LLM 생성 전체 상한. 넘으면 기본 가이드로 나간다
 VERIFY_LABEL = "_a2d-verify"
+# A2D_VERIFY_MODE=trust여도 TXT 없이 통과시키는 최상위 도메인. 인터넷에 실제로 없는 예약 이름(RFC 2606·6761)뿐이다.
+# 실제 도메인은 trust에서도 TXT로 확인한다. 실제 점검 엔진(LiveEngine)이 소유권 없는 남의 사이트에 요청하지 않게 한다.
+TRUST_TLDS = frozenset({"test", "example", "invalid", "localhost"})
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 
 
@@ -179,7 +182,7 @@ class Service:
         d = self._domain_or_404(domain_id)
         reason = None
         if d["verify_status"] != "verified":
-            if self.s.verify_mode == "trust":
+            if self.s.verify_mode == "trust" and d["domain"].rsplit(".", 1)[-1] in TRUST_TLDS:
                 ok = True
             else:
                 values = await self._lookup_txt(f"{VERIFY_LABEL}.{d['domain']}")
