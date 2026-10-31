@@ -497,8 +497,16 @@ ATTACK_MAX_TOKENS = 1024  # 입력(시스템·도구 정의·도구 결과)과 �
 ATTACK_TIMEOUT = 60.0
 
 
+# run_attack이 끝난 이유. service가 점검 결과의 attack.reason으로 화면에 알린다(API 명세 GET /scans/{scan_id}).
+ATTACK_DONE = "done"                        # finish_scan, 예산 소진, LLM이 도구를 더 부르지 않음
+ATTACK_NOT_CONFIGURED = "llm_not_configured"  # A2D_LLM_BASE_URL이 비어 있음
+ATTACK_NO_HANDLERS = "no_handlers"          # 대상에 요청하는 점검 핸들러가 없음
+ATTACK_LLM_UNAVAILABLE = "llm_unavailable"  # 첫 LLM 요청부터 실패해 도구를 한 번도 부르지 못함
+ATTACK_LLM_INTERRUPTED = "llm_interrupted"  # 도구를 부르다가 LLM 요청이 실패함(일부만 확인)
+
+
 async def run_attack(llm: LlmClient, ctx: EngineContext, summary: dict,
-                     *, handlers: dict[str, Handler] | None = None) -> None:
+                     *, handlers: dict[str, Handler] | None = None) -> str:
     """추가 점검(FR-04). LLM에게 가드가 허용한 도구만 보여 주고, 제안한 도구 호출을 가드를 거쳐 실행한다.
 
     summary는 service가 넘기는 {"assets": [...], "findings": [...]} 요약이다(응답 원문·위치 없음).
@@ -510,12 +518,14 @@ async def run_attack(llm: LlmClient, ctx: EngineContext, summary: dict,
 
     대상에 요청을 보내는 점검 핸들러(probe_http 등)가 하나도 등록되지 않았으면 추가 점검을 건너뛴다.
     기본 도구(list_assets·finish_scan)만으로는 실제로 점검할 것이 없기 때문이다(팀이 핸들러를 만들기 전 상태).
+
+    돌려주는 값은 끝난 이유(ATTACK_*)다.
     """
     if not llm.configured:
-        return None
+        return ATTACK_NOT_CONFIGURED
     handlers = ATTACK_HANDLERS if handlers is None else handlers
     if not handlers:
-        return None
+        return ATTACK_NO_HANDLERS
     scope = Scope.from_summary(summary)
     guard = Guard("attack", scope, ctx.budget, ctx.audit, handlers)
     system = ATTACK_SYSTEM.format(tool_calls=ctx.budget.tool_calls_limit,
@@ -524,23 +534,25 @@ async def run_attack(llm: LlmClient, ctx: EngineContext, summary: dict,
         {"role": "system", "content": system},
         {"role": "user", "content": ATTACK_FIRST_USER},
     ]
+    called = False
     while not guard.done:
         try:
             message = await llm.chat_tools(messages, guard.tools_for_llm(),
                                            max_tokens=ATTACK_MAX_TOKENS, timeout=ATTACK_TIMEOUT)
         except LlmError as e:
             log.warning("추가 점검 LLM 요청 실패: %s", e)
-            return None
+            return ATTACK_LLM_INTERRUPTED if called else ATTACK_LLM_UNAVAILABLE
         tool_calls = message.get("tool_calls")
         if not isinstance(tool_calls, list) or not tool_calls:
             log.info("추가 점검 종료: LLM이 도구를 더 부르지 않음")
-            return None
+            return ATTACK_DONE
         messages.append(message)  # tool 메시지는 이 assistant 턴의 tool_calls에 이어져야 한다
         for tc in tool_calls:
             fn = tc.get("function") or {}
             result = await guard.call(fn.get("name"), fn.get("arguments"))
+            called = True
             messages.append({"role": "tool", "tool_call_id": tc.get("id"),
                              "content": _compact(result)})
             if guard.done:
                 break
-    return None
+    return ATTACK_DONE

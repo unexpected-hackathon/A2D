@@ -370,8 +370,9 @@ def test_attack_runs_tools_until_finish():
         ("finish_scan", {"reason": "더 볼 곳 없음"}),
     )
     llm, ctx, fake, rows, calls, handlers = attack_setup(reply)
-    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers=handlers))
+    result = asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers=handlers))
 
+    assert result == agents.ATTACK_DONE
     assert calls == [("probe_http", {"asset_id": "A-002"}),
                      ("check_unauth_api", {"asset_id": "A-002", "endpoint_id": "E-01"})]
     assert [r["tool"] for r in rows] == ["list_assets", "probe_http", "check_unauth_api", "finish_scan"]
@@ -435,8 +436,34 @@ def test_attack_stops_on_llm_error():
 
     ctx = SimpleNamespace(budget=Budget(300, 20, 300),
                           audit=lambda *a, **k: rows.append((a, k)))
-    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers={"probe_http": probe}))
+    result = asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers={"probe_http": probe}))
     assert rows == []  # 첫 요청이 실패하면 도구를 한 번도 부르지 않는다
+    assert result == agents.ATTACK_LLM_UNAVAILABLE  # 화면에는 "건너뜀"으로 나간다
+
+
+def test_attack_llm_error_after_tool_call_is_interrupted():
+    """도구를 한 번이라도 부른 뒤 LLM이 끊기면 건너뜀이 아니라 '일부만 확인'이다."""
+    reply = tool_call_reply(("list_assets", {}), ("finish_scan", {"reason": "끝"}))
+    llm, ctx, fake, rows, calls, handlers = attack_setup(reply)
+    inner = fake.__call__
+
+    def flaky(request):
+        if request.url.path.endswith("/chat/completions") and len(fake.requests) >= 1:
+            fake.requests.append({})
+            return httpx.Response(500, text="boom")
+        return inner(request)
+
+    llm = agents.LlmClient(Settings(llm_base_url="http://llm.test/v1", llm_api_key="k"),
+                           transport=httpx.MockTransport(flaky))
+    result = asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers=handlers))
+    assert result == agents.ATTACK_LLM_INTERRUPTED
+    assert [r["tool"] for r in rows] == ["list_assets"]
+
+
+def test_attack_without_handlers_reports_reason():
+    llm, ctx, fake, rows, calls, _ = attack_setup(tool_call_reply())
+    assert asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY, handlers={})) == agents.ATTACK_NO_HANDLERS
+    assert fake.requests == []
 
 
 def test_attack_scan_stop_propagates():
@@ -452,5 +479,5 @@ def test_attack_noop_without_llm():
     rows: list[dict] = []
     ctx = SimpleNamespace(budget=Budget(300, 20, 300),
                           audit=lambda *a, **k: rows.append((a, k)))
-    asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY))
+    assert asyncio.run(agents.run_attack(llm, ctx, ATTACK_SUMMARY)) == agents.ATTACK_NOT_CONFIGURED
     assert rows == []
