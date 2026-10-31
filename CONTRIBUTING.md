@@ -150,8 +150,8 @@ docs(docs): PRD에 재점검 흐름 추가
 - **Settings → General → Pull Requests**
   - Squash merging만 허용, 커밋 제목은 PR 제목
   - 머지한 브랜치 자동 삭제
-- **Settings → Webhooks**
-  - 이슈, 이슈 댓글, PR, PR 리뷰 알림을 팀 디스코드 채널로 보낸다. 웹훅 주소는 비밀값이라 저장소에 적지 않는다
+- **디스코드 알림** (`.github/workflows/discord-notify.yml`)
+  - 새 PR이나 이슈가 열릴 때만 팀 디스코드 채널에 알린다. 웹훅 주소는 Settings → Secrets and variables → Actions의 `DISCORD_WEBHOOK_URL`에 있다
 
 ## 7. 제출
 
