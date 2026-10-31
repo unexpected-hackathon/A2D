@@ -348,7 +348,7 @@ class Service:
         if not self.llm.configured or self.s.engine == "fixture":
             return
         resolve = DnsResolver(self.s.dns_servers).a if self.s.dns_servers else None  # 엔진과 같은 점검 DNS
-        async with attack_handlers.open_client(self.s.ca_bundle or False, resolve=resolve) as client:
+        async with attack_handlers.open_client(resolve=resolve) as client:
             handlers = attack_handlers.build_attack_handlers(ctx, client)
             await agents.run_attack(self.llm, ctx, summary, handlers=handlers)
 

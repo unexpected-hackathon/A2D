@@ -59,6 +59,8 @@ class CertInfo:
     self_signed: bool = False
     hostname_ok: bool = True
     tls_version: str | None = None
+    # A2D_CA_BUNDLE의 CA로 발급 체인을 검증한 결과. CA 묶음을 주지 않았거나 확인하지 못했으면 None
+    trusted: bool | None = None
     error: str | None = None
 
 
@@ -179,20 +181,20 @@ class HttpClient:
         self._last_at[host] = time.monotonic()
 
 
-def open_http_client(verify: bool | str = False, resolve: Resolve | None = None) -> httpx.AsyncClient:
-    """점검용 httpx 클라이언트. verify는 호출부(A2D_CA_BUNDLE)가 정한다.
+def open_http_client(resolve: Resolve | None = None) -> httpx.AsyncClient:
+    """점검용 httpx 클라이언트. 인증서를 검증하지 않는다.
 
     resolve를 주면 접속 주소를 그 함수(점검 DNS)로 찾는다. 없으면 시스템 DNS를 쓴다.
 
-    기본은 검증을 끈다. 외부 노출 점검은 자체 서명·만료 인증서를 쓰는 서버도 내용을 읽어야 하고
-    (그런 서버가 바로 점검 대상이다), 인증서 유효성은 #28이 따로 본다(target/README "결함 상태의 TLS").
-    운영자가 CA 묶음 경로를 넣으면 그 CA로 검증한다. 이때 자체 서명 대상은 내용 조회가 실패하고 #28만 남는다.
+    외부 노출 점검은 자체 서명·만료 인증서를 쓰는 서버도 내용을 읽어야 한다(그런 서버가 바로 점검 대상이다).
+    여기서 검증하면 그런 대상은 모든 요청이 실패해 점검 자체가 끝나지 못한다. 인증서 유효성은 #28이
+    TlsInspector로 따로 본다(target/README "결함 상태의 TLS"). A2D_CA_BUNDLE도 #28에서만 쓴다.
     """
     transport = None
     if resolve is not None:
-        transport = DnsPinnedTransport(resolve, httpx.AsyncHTTPTransport(verify=verify))
+        transport = DnsPinnedTransport(resolve, httpx.AsyncHTTPTransport(verify=False))
     return httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT,
-                             follow_redirects=False, verify=verify, transport=transport)
+                             follow_redirects=False, verify=False, transport=transport)
 
 
 # ==================================================================== DNS
@@ -251,11 +253,19 @@ class DnsResolver:
 # ==================================================================== TLS
 
 class TlsInspector:
-    """표준 ssl로 인증서를 받아 만료·발급자·이름 일치를 본다. 실제 핸드셰이크 1회."""
+    """표준 ssl로 인증서를 받아 만료·발급자·이름 일치를 본다. 실제 핸드셰이크 1회.
 
-    def __init__(self, timeout: float = 5.0, resolve: Resolve | None = None):
+    ca_bundle(A2D_CA_BUNDLE)을 주면 그 CA로 발급 체인을 검증하는 핸드셰이크를 한 번 더 해 trusted를 채운다.
+    파일이 없거나 읽지 못하면 엔진을 만들 때 바로 실패한다(설정 오류를 점검 결과로 숨기지 않는다).
+    """
+
+    def __init__(self, timeout: float = 5.0, resolve: Resolve | None = None, ca_bundle: str | None = None):
         self.timeout = timeout
         self._resolve = resolve  # 점검 DNS. 없으면 시스템 DNS
+        self._verify_ctx: ssl.SSLContext | None = None
+        if ca_bundle:
+            self._verify_ctx = ssl.create_default_context(cafile=ca_bundle)
+            self._verify_ctx.check_hostname = False  # 이름 일치는 hostname_ok로 따로 본다
 
     def inspect(self, host: str, port: int = 443) -> CertInfo:
         import socket
@@ -275,7 +285,23 @@ class TlsInspector:
                     version = ss.version()
         except (OSError, ssl.SSLError) as e:
             return CertInfo(error=type(e).__name__)
-        return _parse_cert(der, host, version)
+        info = _parse_cert(der, host, version)
+        if self._verify_ctx is not None and not info.error:
+            info.trusted = self._chain_trusted(addr, host, port)
+        return info
+
+    def _chain_trusted(self, addr: str, host: str, port: int) -> bool | None:
+        """CA 묶음으로 발급 체인을 검증한다. 검증 실패면 False, 연결 자체가 안 되면 None(판정하지 않음)."""
+        import socket
+
+        try:
+            with socket.create_connection((addr, port), timeout=self.timeout) as sock:
+                with self._verify_ctx.wrap_socket(sock, server_hostname=host):
+                    return True
+        except ssl.SSLCertVerificationError:
+            return False
+        except (OSError, ssl.SSLError):
+            return None
 
 
 def _parse_cert(der: bytes, host: str, version: str | None) -> CertInfo:

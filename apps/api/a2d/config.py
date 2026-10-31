@@ -68,8 +68,9 @@ class Settings:
     # 점검 엔진. fixture = 시연 시나리오를 돌려주는 가짜 엔진, 또는 "패키지.모듈:클래스"
     engine: str = "fixture"
     fixture_step_sec: float = 0.4
-    # 점검 HTTP의 TLS 검증. 비우면 검증을 끈다(시연 대상은 자체 서명 인증서를 쓸 수 있고, 인증서
-    # 유효성은 #28이 따로 본다 — target/README "결함 상태의 TLS"). CA 묶음 경로를 넣으면 그 CA로 검증한다.
+    # #28이 인증서 발급 체인을 검증할 CA 묶음 경로. 넣으면 이 CA가 발급하지 않은 인증서를 #28 "invalid"로 본다.
+    # 비우면 자체 서명·이름·만료만 본다. 점검 HTTP(내용 조회)는 이 값과 상관없이 검증하지 않는다
+    # (자체 서명 대상도 내용을 읽어야 한다 — target/README "결함 상태의 TLS").
     ca_bundle: str = ""
     request_limit: int = 300
     tool_call_limit: int = 20
