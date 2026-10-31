@@ -242,7 +242,7 @@ DNS TXT 레코드를 조회해 소유권을 확인한다. 확인이 끝날 때�
 }
 ```
 
-개발·시연 설정(`A2D_VERIFY_MODE=trust`)에서는 예약 최상위 도메인(`.test`·`.example`·`.invalid`·`.localhost`)과, 운영자가 `A2D_TRUST_DOMAINS`에 적은 도메인(하위 도메인 포함)만 조회 없이 `verified`가 된다. 그 밖의 실제 도메인은 이 설정에서도 TXT를 조회한다. `A2D_TRUST_DOMAINS`에는 직접 소유한 도메인만 넣는다.
+개발·시연 설정(`A2D_VERIFY_MODE=trust`)에서는 TXT를 조회하지 않고 모든 도메인이 바로 `verified`가 된다. 소유권을 확인하지 않으므로 운영자가 직접 관리하는 도메인만 등록해 점검한다.
 
 실패하면 `verify_status`가 `failed`이고 `reason`에 이유가 온다. 예: `"TXT 레코드를 찾지 못했습니다. DNS 반영에 몇 분이 걸릴 수 있습니다."` 실패해도 HTTP 상태는 200이다.
 

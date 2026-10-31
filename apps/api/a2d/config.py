@@ -59,12 +59,9 @@ class Settings:
     # 1이면 /api/v1/openapi.json·/api/v1/docs를 연다. A2D 자신이 #17에 걸리므로 시연 환경 밖에서는 끈다
     expose_openapi: bool = False
 
-    # 소유권 확인(FR-01). dns = TXT 레코드 조회, trust = 예약 도메인(.test·.example·.invalid·.localhost)만
-    # 조회 없이 통과(화면 개발용, 또는 TXT 장면을 뺀 시연). 실제 도메인은 trust에서도 TXT로 확인한다(service.TRUST_TLDS)
+    # 소유권 확인(FR-01). dns = TXT 레코드 조회, trust = 모든 도메인을 조회 없이 통과(화면 개발용, 또는 TXT 장면을 뺀 시연).
+    # trust에서는 소유권을 확인하지 않으므로 운영자가 직접 관리하는 도메인만 등록해 점검한다.
     verify_mode: str = "dns"
-    # trust에서 예약 도메인처럼 TXT 없이 통과시킬 실제 도메인(하위 도메인 포함). 운영자가 소유를 보증하는 것만 넣는다.
-    # dns 모드에서는 쓰지 않는다. 예: codykata.com
-    trust_domains: list[str] = field(default_factory=list)
     # 점검 DNS. 소유권 확인·자산 찾기·점검 HTTP·TLS 접속이 모두 이 DNS로 주소를 찾는다.
     # 비우면 시스템 DNS. 예: 10.253.53.53, 127.0.0.1:15353
     dns_servers: list[str] = field(default_factory=list)
@@ -97,7 +94,6 @@ class Settings:
             secure_cookie=_bool("A2D_SECURE_COOKIE"),
             expose_openapi=_bool("A2D_EXPOSE_OPENAPI"),
             verify_mode=os.environ.get("A2D_VERIFY_MODE", "dns").strip().lower(),
-            trust_domains=[d.lower().strip(".") for d in _list("A2D_TRUST_DOMAINS")],
             dns_servers=_list("A2D_DNS_SERVER"),
             engine=os.environ.get("A2D_ENGINE", "fixture").strip(),
             fixture_step_sec=_float("A2D_FIXTURE_STEP_SEC", 0.4),

@@ -71,9 +71,6 @@ STAGE_NAMES = {
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 REPORT_TIMEOUT_SEC = 150  # 조치 가이드 LLM 생성 전체 상한. 넘으면 기본 가이드로 나간다
 VERIFY_LABEL = "_a2d-verify"
-# A2D_VERIFY_MODE=trust여도 TXT 없이 통과시키는 최상위 도메인. 인터넷에 실제로 없는 예약 이름(RFC 2606·6761)뿐이다.
-# 실제 도메인은 trust에서도 TXT로 확인한다. 실제 점검 엔진(LiveEngine)이 소유권 없는 남의 사이트에 요청하지 않게 한다.
-TRUST_TLDS = frozenset({"test", "example", "invalid", "localhost"})
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 
 
@@ -178,18 +175,11 @@ class Service:
             return None
         return [b"".join(x.strings).decode("utf-8", "replace") for x in ans]
 
-    def _trusted(self, domain: str) -> bool:
-        """trust 모드에서 TXT 없이 통과시킬 도메인인가. 예약 최상위 도메인이거나, 운영자가 A2D_TRUST_DOMAINS에 적은
-        도메인(또는 그 하위 도메인)일 때만 그렇다. 그 밖의 실제 도메인은 trust여도 TXT로 확인한다."""
-        if domain.rsplit(".", 1)[-1] in TRUST_TLDS:
-            return True
-        return any(domain == t or domain.endswith("." + t) for t in self.s.trust_domains)
-
     async def verify_domain(self, domain_id: str) -> dict:
         d = self._domain_or_404(domain_id)
         reason = None
         if d["verify_status"] != "verified":
-            if self.s.verify_mode == "trust" and self._trusted(d["domain"]):
+            if self.s.verify_mode == "trust":  # TXT 확인을 끈 상태: 조회 없이 통과
                 ok = True
             else:
                 values = await self._lookup_txt(f"{VERIFY_LABEL}.{d['domain']}")
