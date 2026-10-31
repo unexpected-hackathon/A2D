@@ -24,8 +24,8 @@ Attack·Defense 에이전트가 쓰는 LLM을 주최 측 GPU 서버에 띄우는
 ```mermaid
 flowchart LR
   subgraph PC[내 PC]
-    API[apps/api<br/>LLM_BASE_URL=127.0.0.1:8000/v1]
-    T[ssh -L 8000]
+    API[apps/api :8000<br/>A2D_LLM_BASE_URL=127.0.0.1:18000/v1]
+    T[ssh -L 18000]
   end
   subgraph VPC[NCP 공공존 VPC 사설망]
     subgraph GPU[GPU 서버 NVIDIA L4]
@@ -177,44 +177,52 @@ vllm serve ~/models/Qwen3-8B \
 
 ```bash
 ./llm.sh tunnel          # 열어 둔 동안만 연결된다. 다른 터미널에서:
-./llm.sh check --local   # 내 PC 127.0.0.1:8000을 거쳐 확인
+./llm.sh check --local   # 내 PC 127.0.0.1:18000을 거쳐 확인
 ```
 
-`llm.sh`를 쓰지 않을 때의 같은 명령:
+내 PC 쪽 포트는 18000이다. `apps/api`가 8000을 쓰기 때문이다. `llm.sh`를 쓰지 않을 때의 같은 명령:
 
 ```bash
-ssh -N -L 127.0.0.1:8000:127.0.0.1:8000 -p <SSH 포트> <계정>@<서버 사설 IP>
+ssh -N -L 127.0.0.1:18000:127.0.0.1:8000 -p <SSH 포트> <계정>@<서버 사설 IP>
 ```
 
 ## 백엔드에서 부르기
 
-`apps/api`는 아래 환경 변수 세 개만 읽고, LLM 호출부를 한 곳에 모은다(상세설계 3절).
+`apps/api`는 `apps/api/.env`의 환경 변수 세 개로 vLLM을 찾고, 호출부는 `a2d/agents/__init__.py`의 `LlmClient` 한 곳에 모은다(상세설계 3절). 세 값이 모두 맞아야 한다. 특히 모델 이름은 `SERVED_MODEL_NAME`(`qwen3-8b`)과 같아야 하고, 다르면 `/health`는 `up`인데 실제 요청이 404로 실패해 기본 가이드로만 나간다.
+
+| `apps/api`를 띄우는 방법 | `A2D_LLM_BASE_URL` | 터널 (`model/.env`) |
+| --- | --- | --- |
+| 노트북에서 직접 (`uvicorn`) | `http://127.0.0.1:18000/v1` | 기본값 그대로 |
+| Docker Compose, macOS·Windows (Docker Desktop) | `http://host.docker.internal:18000/v1` | 기본값 그대로 |
+| Docker Compose, 리눅스 | `http://10.253.53.1:18000/v1` | `TUNNEL_BIND=10.253.53.1` (target을 먼저 띄워 시연 네트워크가 있어야 한다) |
 
 ```bash
-LLM_BASE_URL=http://127.0.0.1:8000/v1   # 터널 주소
-LLM_API_KEY=<GPU 서버 .env의 VLLM_API_KEY>
-LLM_MODEL=qwen3-8b
+# apps/api/.env
+A2D_LLM_BASE_URL=http://127.0.0.1:18000/v1
+A2D_LLM_API_KEY=<GPU 서버 model/.env의 VLLM_API_KEY>
+A2D_LLM_MODEL=qwen3-8b
 ```
 
-```python
-from openai import OpenAI
+`LlmClient`는 이미 httpx로 `/models`를 불러 상태를 본다. 에이전트 요청도 같은 클라이언트로 보낸다.
 
-client = OpenAI(base_url=os.environ["LLM_BASE_URL"], api_key=os.environ["LLM_API_KEY"], timeout=60)
-resp = client.chat.completions.create(
-    model=os.environ["LLM_MODEL"],
-    messages=messages,
-    tools=tools,                # 에이전트별로 허용된 도구만 넣는다
-    tool_choice="auto",
-    temperature=0.3,
-    # 생각 모드를 요청마다 켤 때만. 기본은 꺼져 있다.
-    # extra_body={"chat_template_kwargs": {"enable_thinking": True}},
-)
-msg = resp.choices[0].message   # msg.tool_calls 또는 msg.content
+```python
+async with httpx.AsyncClient(timeout=60) as c:
+    r = await c.post(f"{llm.base}/chat/completions", headers=llm.headers(), json={
+        "model": llm.model,
+        "messages": messages,
+        "tools": tools,            # 에이전트별로 허용된 도구만 넣는다
+        "tool_choice": "auto",
+        "temperature": 0.3,
+        "max_tokens": 1024,
+        # 생각 모드를 요청마다 켤 때만. 기본은 꺼져 있다.
+        # "chat_template_kwargs": {"enable_thinking": True},
+    })
+msg = r.json()["choices"][0]["message"]   # msg["tool_calls"] 또는 msg["content"]
 ```
 
 - 도구 호출 결과는 `message.tool_calls`로 온다. `function.arguments`는 JSON 문자열이라 가드 층에서 스키마로 다시 검증한다.
 - 생각 모드를 켜면 생각은 `message.reasoning_content`(또는 `reasoning`)로 따로 오고 `content`에는 섞이지 않는다. 생각은 화면에 내보내지 않는다.
-- `GET /health`(API 명세 4절)의 `llm` 값은 `GET {LLM_BASE_URL}/models`를 짧은 제한 시간(예: 5초)으로 불러 200이면 `up`으로 보기를 권한다. vLLM 자체의 `/health`는 `/v1` 밖에 있고 키 없이 열려 있어 모델 이름까지는 확인하지 못한다. LLM이 실패하면 조치 가이드를 기본 가이드(`source: template`)로 만든다(FR-11).
+- `GET /health`(API 명세 4절)의 `llm` 값은 `LlmClient.status()`가 `GET {A2D_LLM_BASE_URL}/models`로 정한다. 모델 이름은 확인하지 않으므로 이름이 틀려도 `up`으로 보인다. LLM 요청이 실패하면 조치 가이드는 기본 가이드(`source: template`)로 나간다(FR-11).
 - 문맥이 8,192 토큰이므로 입력(시스템 프롬프트, 도구 정의, 발견 요약)과 `max_tokens`의 합이 이를 넘지 않게 한다.
 
 ## 서버 실측 (10월 31일, NVIDIA L4)
@@ -241,7 +249,8 @@ msg = resp.choices[0].message   # msg.tool_calls 또는 msg.content
 | `MAX_NUM_SEQS` | 8 | 동시에 처리하는 요청 수 |
 | `ENABLE_THINKING` | false | 생각 모드 기본값. 요청에서 `chat_template_kwargs`로 바꿀 수 있다 |
 | `VLLM_PORT` | 8000 | 서버 안의 포트. 바깥에 열지 않는다 |
-| `LOCAL_PORT` | 8000 | 내 PC에서 터널이 여는 포트 |
+| `LOCAL_PORT` | 18000 | 내 PC에서 터널이 여는 포트. `apps/api`가 8000을 쓴다 |
+| `TUNNEL_BIND` | 127.0.0.1 | 터널을 묶을 내 PC 주소. 리눅스에서 `apps/api`를 Compose로 띄울 때만 `10.253.53.1` |
 
 메모리 어림: L4 23GB × 0.90 ≈ 20.7GB에서 가중치 16.4GB와 실행 여유 약 1.5GB를 빼면 KV 캐시가 약 2.5~3GB 남는다. Qwen3-8B는 토큰당 KV가 약 144KB(36층 × KV 헤드 8 × 128차원 × K·V × 2바이트)라 약 1만 7천~2만 토큰이 들어간다. 8,192 문맥 요청 두 개를 동시에 처리할 수 있는 정도다. 로그의 `GPU KV cache size`와 `Maximum concurrency` 줄로 실제 값을 확인한다.
 
@@ -280,7 +289,8 @@ tar xzf ~/wheels.tgz -C ~ && python3 -m venv .venv
 | `HTTP 401` | 내 PC `.env`의 `VLLM_API_KEY`가 서버 `.env`와 다르다 |
 | `연결 실패` (서버에서) | `./llm.sh status`. 프로세스가 없으면 `logs/vllm.log` 마지막 부분을 본다 |
 | `연결 실패` (내 PC에서) | VPN이 끊겼거나 터널 창이 닫혔다. `./llm.sh tunnel`을 다시 연다 |
-| 터널에서 `bind: Address already in use` | 내 PC에서 8000 포트를 다른 프로그램이 쓴다. `.env`의 `LOCAL_PORT`를 바꾸고 `LLM_BASE_URL`도 맞춘다 |
+| 터널에서 `bind: Address already in use` | 내 PC에서 `LOCAL_PORT`(18000)를 다른 프로그램이 쓴다. `model/.env`의 `LOCAL_PORT`를 바꾸고 `apps/api/.env`의 `A2D_LLM_BASE_URL`도 맞춘다 |
+| `/health`는 `llm: up`인데 조치 가이드가 늘 기본 가이드 | `apps/api/.env`의 `A2D_LLM_MODEL`이 `SERVED_MODEL_NAME`(`qwen3-8b`)과 다르다. vLLM 로그에 `does not exist` 404가 찍힌다 |
 | 로그에 `fatal error: Python.h: No such file or directory` (Triton `cuda_utils.c`) | 가상 환경이 헤더 없는 시스템 Python으로 만들어졌다. `git pull` 후 `./llm.sh setup`을 다시 실행하면 uv 관리 Python으로 다시 만든다(내려받은 패키지는 uv 캐시를 쓴다). sudo로 `python3-dev`를 설치하는 방법은 서버 구성 변경이라 쓰지 않는다 |
 | 로그에 `No such file or directory: 'ninja'` | vLLM이 실행 중에 커널을 빌드할 때 `ninja`를 PATH에서 찾는다. `ninja`는 의존성으로 `.venv/bin`에 설치되므로 `llm.sh up`이 `.venv/bin`을 PATH 앞에 둔다. 직접 `vllm serve`를 실행할 때는 `source .venv/bin/activate`를 먼저 한다 |
 | `up`이 `Engine core initialization failed`로 끝남 | 마지막 줄은 결과일 뿐이다. `up`이 함께 보여 주는 '원인으로 보이는 줄'이나 `grep -n -E 'Error|Exception' logs/vllm.log \| head`에서 EngineCore 쪽 첫 오류를 본다 |
@@ -299,5 +309,5 @@ tar xzf ~/wheels.tgz -C ~ && python3 -m venv .venv
 
 GPU 서버에 붙을 수 없는 팀원과 11월 1일 이후에는 아래처럼 한다.
 
-- 기본: `LLM_BASE_URL`을 비워 두면 백엔드가 LLM 없이 기본 가이드(`source: template`)를 내도록 만든다. 점검·점수·리포트 흐름은 LLM 없이 끝까지 돈다(FR-11).
-- 에이전트 개발: 같은 OpenAI 호환 API를 주는 다른 서버로 `LLM_BASE_URL`만 바꾼다. 다른 모델이나 서비스를 쓰면 루트 README 외부 자원 표에 먼저 적는다.
+- 기본: `A2D_LLM_BASE_URL`을 비워 두면 백엔드가 LLM 없이 기본 가이드(`source: template`)를 내도록 만든다. 점검·점수·리포트 흐름은 LLM 없이 끝까지 돈다(FR-11).
+- 에이전트 개발: 같은 OpenAI 호환 API를 주는 다른 서버로 `A2D_LLM_BASE_URL`만 바꾼다. 다른 모델이나 서비스를 쓰면 루트 README 외부 자원 표에 먼저 적는다.

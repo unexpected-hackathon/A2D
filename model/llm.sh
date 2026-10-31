@@ -13,7 +13,7 @@
 #   ./llm.sh check [옵션]  모델 목록·한국어 답변·도구 호출 확인 (check.py에 옵션 전달)
 #
 # 내 PC에서
-#   ./llm.sh tunnel        SSH 터널 열기: 내 PC 127.0.0.1:LOCAL_PORT → GPU 서버 vLLM
+#   ./llm.sh tunnel        SSH 터널 열기: 내 PC TUNNEL_BIND:LOCAL_PORT → GPU 서버 vLLM
 #   ./llm.sh check --local 터널을 거쳐 확인
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -249,20 +249,20 @@ cmd_logs() {
 
 cmd_tunnel() {
   [ -n "${GPU_SSH_HOST:-}" ] && [ -n "${GPU_SSH_USER:-}" ] || die ".env에 GPU_SSH_HOST(서버 사설 IP)와 GPU_SSH_USER(계정)를 적는다. VPN이 연결돼 있어야 한다"
-  local lport="${LOCAL_PORT:-8000}"
-  log "터널: 127.0.0.1:$lport → $GPU_SSH_USER@$GPU_SSH_HOST:${GPU_SSH_PORT:-22} → 127.0.0.1:$VLLM_PORT"
+  local lport="$LOCAL_PORT" bind="$TUNNEL_BIND"
+  log "터널: $bind:$lport → $GPU_SSH_USER@$GPU_SSH_HOST:${GPU_SSH_PORT:-22} → 127.0.0.1:$VLLM_PORT"
   log "이 창을 열어 두는 동안만 연결된다. 끊으려면 Ctrl+C"
-  log "백엔드: LLM_BASE_URL=http://127.0.0.1:$lport/v1"
+  log "백엔드(apps/api/.env): A2D_LLM_BASE_URL=http://$bind:$lport/v1, A2D_LLM_MODEL=$SERVED_MODEL_NAME"
   exec ssh -N \
     -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
-    -L "127.0.0.1:$lport:127.0.0.1:$VLLM_PORT" \
+    -L "$bind:$lport:127.0.0.1:$VLLM_PORT" \
     -p "${GPU_SSH_PORT:-22}" "$GPU_SSH_USER@$GPU_SSH_HOST"
 }
 
 cmd_check() {
   local base="http://$VLLM_HOST:$VLLM_PORT/v1" args=()
   for a in "$@"; do
-    if [ "$a" = "--local" ]; then base="http://127.0.0.1:${LOCAL_PORT:-8000}/v1"; else args+=("$a"); fi
+    if [ "$a" = "--local" ]; then base="http://$TUNNEL_BIND:$LOCAL_PORT/v1"; else args+=("$a"); fi
   done
   [ -n "${VLLM_API_KEY:-}" ] || die ".env의 VLLM_API_KEY가 비어 있다 (GPU 서버 .env의 값을 복사한다)"
   LLM_BASE_URL="$base" LLM_API_KEY="$VLLM_API_KEY" LLM_MODEL="$SERVED_MODEL_NAME" \

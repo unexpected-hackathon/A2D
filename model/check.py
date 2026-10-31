@@ -5,6 +5,7 @@
     python3 check.py --save logs/evidence   # 요청·응답 JSON을 저장한다(발표 증거)
 
 환경 변수 LLM_BASE_URL, LLM_API_KEY, LLM_MODEL을 읽는다(llm.sh check가 채운다).
+없으면 apps/api와 같은 A2D_LLM_BASE_URL, A2D_LLM_API_KEY, A2D_LLM_MODEL을 읽는다.
 보내는 발견 데이터는 모두 시연용 가상 값이다.
 """
 
@@ -203,9 +204,10 @@ def check_tool_call(client: Client, model: str, rep: Report) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--base-url", default=os.environ.get("LLM_BASE_URL", "http://127.0.0.1:8000/v1"))
-    parser.add_argument("--api-key", default=os.environ.get("LLM_API_KEY", ""))
-    parser.add_argument("--model", default=os.environ.get("LLM_MODEL", "qwen3-8b"))
+    env = lambda k, d="": os.environ.get(k) or os.environ.get(f"A2D_{k}") or d  # noqa: E731
+    parser.add_argument("--base-url", default=env("LLM_BASE_URL", "http://127.0.0.1:18000/v1"))
+    parser.add_argument("--api-key", default=env("LLM_API_KEY"))
+    parser.add_argument("--model", default=env("LLM_MODEL", "qwen3-8b"))
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--thinking", action="store_true", help="생각 모드 답변도 함께 확인")
     parser.add_argument("--save", type=Path, help="요청·응답 JSON을 저장할 디렉터리")

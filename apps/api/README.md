@@ -71,7 +71,7 @@ a2d/
 
 ### LLM 붙이기
 
-`.env`의 `A2D_LLM_BASE_URL`에 GPU 서버 vLLM 주소(`http://<서버>:8000/v1`)를 넣으면 `/health`의 `llm`이 `up`이 된다. 조치 설명·질의응답은 `a2d/agents/__init__.py`의 `write_report`, `answer_question`을 채우면 API가 바로 쓴다. 비어 있거나 실패하면 기본 가이드(`source: "template"`)로 나가고, 질의응답은 `503 LLM_UNAVAILABLE`이다.
+GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 된다. 조치 설명·질의응답은 `a2d/agents/__init__.py`의 `write_report`, `answer_question`을 채우면 API가 바로 쓴다. 비어 있거나 실패하면 기본 가이드(`source: "template"`)로 나가고, 질의응답은 `503 LLM_UNAVAILABLE`이다.
 
 ## API 명세와 다른 점
 
