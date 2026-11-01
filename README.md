@@ -19,6 +19,71 @@
 
 작업 방식(GitHub flow, 브랜치·커밋·PR 규칙)은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
 
+## 아키텍처
+
+화면(`apps/web`)은 백엔드(`apps/api`)의 HTTP API만 부른다. 백엔드 안에서 점검 엔진(`engine/`)이 소유권을 증명한 대상에 **읽기 전용** 요청을 보내 자산과 발견을 만들고, 점수와 오늘 할 일은 코드(`scoring.py`)가 계산하며, LLM(`agents/`)은 추가 점검 계획과 조치 설명만 맡는다. LLM이 없어도 점검·점수·기본 가이드는 동작한다.
+
+```mermaid
+flowchart LR
+  web["apps/web<br/>React + SEED<br/>등록 · 대시보드 · 조치 가이드 · 기록"]
+  subgraph api["apps/api — FastAPI /api/v1"]
+    main["main.py<br/>라우팅 · 세션 로그인 · Origin 검사"]
+    svc["service.py<br/>소유권 · 점검 실행 · 점수 · 가이드 · 기록"]
+    store[("store.py<br/>SQLite")]
+    scoring["scoring.py<br/>위험 · 안전 점수, 오늘 할 일"]
+    subgraph engine["engine/ — LiveEngine"]
+      live["live.py<br/>자산 찾기 · 점검 34개 판정"]
+      crawl["crawl.py<br/>사이트 전체 크롤러"]
+      intel["intel.py<br/>공개 자료 조회"]
+      net["net.py<br/>HTTP GET · DNS · TLS"]
+    end
+    subgraph agents["agents/ — Attack · Defense"]
+      tools["tools.py<br/>도구 등록표 · 가드 층"]
+      handlers["handlers.py<br/>Attack 점검 핸들러"]
+    end
+    main --> svc
+    svc --> store
+    svc --> scoring
+    svc --> live
+    live --> crawl
+    live --> intel
+    live --> net
+    crawl --> net
+    intel --> net
+    svc --> tools
+    tools --> handlers
+    handlers --> net
+  end
+  target[("점검 대상<br/>DNS TXT로 소유권을 증명한 도메인")]
+  public[("공개 자료<br/>crt.sh · NVD · CISA KEV · endoflife.date · RDAP")]
+  llm["model/ — vLLM Qwen3-8B<br/>GPU 서버, SSH 터널로만 접속"]
+  web -- "세션 쿠키, vite proxy /api" --> main
+  net -- "읽기 전용 GET · DNS · TLS, 호스트당 초당 2건" --> target
+  net -- "제품 · 버전 · 공개 도메인명만" --> public
+  tools -- "OpenAI 호환 /v1, 도구 호출" --> llm
+```
+
+### 점검 1회의 흐름
+
+1. **등록·소유권** — 화면에서 도메인을 등록하면 `service.py`가 TXT 값을 만들고, `dnspython`으로 `_a2d-verify.<도메인>` 레코드를 확인한 도메인만 점검 대상이 된다.
+2. **자산 찾기** — `live.py`가 하위 도메인 단어 목록(#1)과 crt.sh 인증서 발급 기록(#5)으로 호스트를 모으고, `crawl.py`가 첫 화면·robots·사이트맵·JS 번들을 따라 같은 도메인 안의 경로를 찾는다.
+3. **기본 점검** — `live.py`가 모은 페이지·JS·헤더·인증서로 34개 항목을 판정하고, `intel.py`가 제품·버전으로 알려진 취약점(#23)·지원 종료(#25), 도메인명으로 등록 정보(#33)를 공개 자료에 묻는다. 발견은 `EngineContext`를 통해 자산 ID·가린 증거(200자 이내)로만 넘어간다.
+4. **추가 점검 (Attack 에이전트)** — LLM이 기본 결과를 보고 도구 이름과 자산 ID만 제안하면 `tools.py`의 가드 층이 허용 목록·범위·인자·예산(도구 호출 20회, 30분)을 검사한 뒤 `handlers.py`의 읽기 전용 핸들러를 실행한다. LLM에는 URL을 받는 도구가 없다.
+5. **점수·오늘 할 일** — `scoring.py`가 발견마다 4요소(노출도·악용 용이성·데이터 민감도·자산 중요도)와 신뢰도로 위험 점수를, 조직 전체의 0~100 안전 점수와 A~F 등급을, "고치면 점수가 얼마나 오르나"로 오늘 할 일 3가지를 계산한다. LLM은 관여하지 않는다.
+6. **조치 가이드 (Defense 에이전트)** — LLM이 조회 도구로 근거를 읽고 항목마다 발견 ID를 붙여 제출하면, 실제 발견과 연결되지 않은 문장은 버린다. LLM이 없으면 항목별 기본 가이드를 쓴다.
+7. **기록·재점검** — 결과는 `store.py`(SQLite)에 남고, 재점검하면 이전 점검과의 변화(새 자산·새 노출·점수)를 비교한다.
+
+| 모듈 | 하는 일 | 설계 문서 |
+| --- | --- | --- |
+| `main.py` · `auth.py` · `errors.py` | 엔드포인트 22개, 세션 로그인, Origin 검사, 오류 형식 | [API 명세](docs/A2D_API명세.md) |
+| `service.py` · `store.py` | 도메인·점검·발견·가이드·기록의 상태 관리와 저장 | [상세설계](docs/A2D_상세설계.md) |
+| `catalog.py` · `scoring.py` | 점검 항목 34개, 항목별 기본값, 점수 계산식 | [점검·점수 설계](docs/A2D_점검점수설계.md) |
+| `engine/base.py` | API와 엔진 사이의 약속: `Engine`·`EngineContext`·`Budget`·`RawAsset`·`RawFinding` | 상세설계 4절 |
+| `engine/net.py` · `crawl.py` · `intel.py` · `live.py` | 대상에 닿는 통로, 크롤러, 공개 자료 조회, 점검 판정 | 상세설계 1·4절 |
+| `agents/tools.py` · `handlers.py` | 에이전트별 도구 허용 목록, 가드 층, Attack 점검 핸들러 | 상세설계 4절 |
+| `target/` | 결함을 심은 가상 채용 플랫폼(app) + TLS 프록시(nginx) + 시연 DNS(CoreDNS) | [target/README.md](target/README.md) |
+| `model/` | GPU 서버에 vLLM으로 Qwen3-8B를 띄우고 SSH 터널로 붙는 스크립트 | [model/README.md](model/README.md) |
+
 ## 문서
 
 | 파일 | 내용 |
