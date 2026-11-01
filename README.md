@@ -68,30 +68,44 @@ cp apps/api/.env.example apps/api/.env   # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD�
 
 ## 외부 자원
 
-사용한 외부 모델·오픈소스는 모두 이 표에 적는다. 새 라이브러리나 모델을 추가하는 PR은 이 표에도 한 줄을 더한다.
+사용한 외부 모델·오픈소스·공개 데이터(API)는 모두 이 표에 적는다. 새 라이브러리·모델·외부 조회를 추가하는 PR은 이 표에도 한 줄을 더한다. 버전은 `apps/web/package-lock.json`, `apps/api/requirements*.txt`, `target/app/requirements.txt`, `target/compose.yml`, `model/.env.example`에 고정한 값이다.
 
 | 자원 | 용도 | 라이선스 |
 | --- | --- | --- |
 | Qwen3-8B | Attack·Defense 에이전트 LLM | Apache 2.0 |
 | vLLM 0.31.0 | 모델 서빙 (OpenAI 호환 엔드포인트) | Apache 2.0 |
-| PyTorch 2.13.0 (vLLM 의존성) | 모델 실행 | BSD-3-Clause |
+| PyTorch (vLLM 0.31.0이 함께 설치하는 버전, 설치 시 2.13.0) | 모델 실행 | BSD-3-Clause |
 | Hugging Face Hub CLI (`hf`, vLLM 의존성) | 모델 가중치 내려받기 | Apache 2.0 |
-| uv 0.13.6 | GPU 서버 Python 가상 환경·패키지 설치 | Apache 2.0 · MIT |
-| FastAPI 0.115.6 · Uvicorn 0.34.0 | 타깃 서버 앱 | MIT · BSD-3-Clause |
-| cryptography 44.0.0 | 타깃 서버 시연 인증서 생성 | Apache 2.0 · BSD |
-| nginx 1.27.4 (Docker 이미지) | 타깃 서버 TLS 프록시 | BSD-2-Clause |
-| CoreDNS 1.11.3 (Docker 이미지) | 타깃 서버 시연 DNS | Apache 2.0 |
-| Python 3.12 slim (Docker 이미지) | 타깃 서버 실행 환경 | PSF |
-| curl 8.11.1 (Docker 이미지) | 타깃 서버 응답 확인(`demo.sh check`) | curl 라이선스(MIT 계열) |
-| FastAPI 0.115.6 · Uvicorn 0.34.0 | A2D 백엔드 API | MIT · BSD-3-Clause |
-| httpx 0.28.1 | A2D 백엔드 LLM 상태 확인 | BSD-3-Clause |
-| dnspython 2.7.0 | A2D 백엔드 DNS TXT 소유권 확인 | ISC |
+| uv 0.13.6 | GPU 서버 Python 3.12 가상 환경·패키지 설치 | Apache 2.0 · MIT |
+| FastAPI 0.115.6 · Uvicorn 0.34.0 | A2D 백엔드 API, 타깃 서버 앱 | MIT · BSD-3-Clause |
+| httpx 0.28.1 | A2D 백엔드 HTTP 클라이언트: 읽기 전용 점검·크롤링, 공개 자료 조회, LLM 호출 | BSD-3-Clause |
+| dnspython 2.7.0 | A2D 백엔드 DNS: TXT 소유권 확인, 하위 도메인 찾기(#1), 점검 DNS 고정, SPF·DMARC(#32) | ISC |
+| cryptography 44.0.0 | A2D 백엔드 TLS 인증서 해석(#28), 타깃 서버 시연 인증서 생성 | Apache 2.0 · BSD |
+| certifi 2024.12.14 | A2D 백엔드 HTTPS 검증 CA 묶음(httpx가 사용) | MPL-2.0 |
 | bcrypt 4.2.1 | A2D 백엔드 비밀번호 해시 | Apache 2.0 |
-| pytest 8.3.4 | A2D 백엔드 테스트 | MIT |
+| pytest 8.3.4 | A2D 백엔드 테스트(개발용) | MIT |
+| Python 3.12.8 slim (Docker 이미지) | A2D 백엔드·타깃 서버 실행 환경 | PSF |
+| nginx 1.27.4-alpine (Docker 이미지) | 타깃 서버 TLS 프록시 | BSD-2-Clause |
+| CoreDNS 1.11.3 (Docker 이미지) | 타깃 서버 시연 DNS | Apache 2.0 |
+| curl 8.11.1 (Docker 이미지) | 타깃 서버 응답 확인(`demo.sh check`) | curl 라이선스(MIT 계열) |
 | React 19.3.1 · Vite 8.3.5 · TypeScript 7.0.2 | 프런트엔드 화면과 개발 서버 | MIT · MIT · Apache 2.0 |
-| [SEED Design](https://github.com/daangn/seed-design) (@seed-design/react 3.1.0 · css 3.1.0 · vite-plugin 2.1.1 · cli 1.7.3) | 프런트엔드 디자인 시스템(주식회사 당근마켓). UI 스니펫을 `apps/web/seed-design/`에 복사해 쓰고 LICENSE·NOTICE를 함께 둠. 브랜드 색은 A2D 색으로 덮어쓰고 당근 브랜드 리소스는 쓰지 않음 | Apache 2.0 |
+| [SEED Design](https://github.com/daangn/seed-design) (@seed-design/react 3.1.0 · css 3.1.0 · vite-plugin 2.1.1) | 프런트엔드 디자인 시스템(주식회사 당근마켓). UI 스니펫을 CLI(`npx @seed-design/cli`, 복사 시점 1.7.3)로 `apps/web/seed-design/`에 복사해 쓰고 LICENSE·NOTICE를 함께 둠. 브랜드 색은 A2D 색으로 덮어쓰고 당근 브랜드 리소스는 쓰지 않음 | Apache 2.0 |
 | @karrotmarket/react-monochrome-icon 1.32.0 | 프런트엔드 아이콘(SEED 아이콘 세트) | Apache 2.0 |
 | React Router 7.18.5 | 프런트엔드 화면 이동 | MIT |
 | Motion 14.9.0 | 프런트엔드 화면 전환·숫자 애니메이션 | MIT |
+| clsx 2.1.1 | 프런트엔드 className 결합(SEED 복사 스니펫이 사용) | MIT |
 | Pretendard 1.3.9 | 프런트엔드 글꼴(오프라인용으로 패키지에 포함) | OFL-1.1 |
-| Vitest 5.0.5 · jsdom 30.1.3 · Testing Library | 프런트엔드 테스트(개발용) | MIT |
+| Vitest 5.0.5 · jsdom 30.1.3 · Testing Library (jest-dom 7.0.1 · react 16.3.3 · user-event 14.6.8) | 프런트엔드 테스트(개발용) | MIT |
+| oxlint 1.90.0 · @vitejs/plugin-react 6.1.2 · @types/node·react·react-dom | 프런트엔드 린트·빌드 플러그인·타입 정의(개발용) | MIT |
+
+### 공개 데이터·API
+
+점검 엔진이 점검 중에 묻는 공개 자료다. 대상 서버의 응답이나 개인정보는 보내지 않고, 제품·버전 문자열(#23·#25)과 공개 도메인명(#5·#33)만 묻는다. 모든 요청에 A2D 점검임을 밝히는 User-Agent를 붙이고(`apps/api/a2d/engine/net.py`), 조회에 실패하면 "모름"으로 두고 보고하지 않는다(`apps/api/a2d/engine/intel.py`).
+
+| 자원 | 용도 | 라이선스·조건 |
+| --- | --- | --- |
+| [crt.sh](https://crt.sh) (Sectigo 공개 인증서 투명성 로그) | #5 인증서 발급 기록으로 단어 목록에 없는 하위 도메인 찾기. 점검당 1회 | 무료 공개 서비스. 별도 라이선스 없음, 이용 제한을 지킨다 |
+| [NVD CVE API 2.0](https://nvd.nist.gov/developers/vulnerabilities) (NIST) | #23 알려진 취약점·CVSS. 선택 사항 `A2D_NVD_API_KEY` | 미국 정부 공개 자료. API 이용 조건에 따라 고지한다: "This product uses the NVD API but is not endorsed or certified by the NVD." |
+| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) 카탈로그 | #23 실제 악용이 확인된 취약점 | 미국 정부 공개 자료 |
+| [endoflife.date](https://endoflife.date) API v1 | #25 지원 종료 일정 | MIT |
+| [IANA RDAP 부트스트랩](https://data.iana.org/rdap/dns.json) · 각 레지스트리 RDAP 서버 | #33 도메인 만료일·이전 잠금 | 공개 |
