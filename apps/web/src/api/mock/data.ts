@@ -36,8 +36,8 @@ const CHECK_ROWS: [number, string, string, Check['phase'], boolean][] = [
   [20, '운영·상태 확인 페이지', 'C', '1차', true],
   [21, 'CORS 과다 허용', 'C', '1차', true],
   [22, '보안 신고 창구 안내', 'C', '2차', false],
-  [23, '서버 버전 표시 + 알려진 약점', 'D', '1차', true],
-  [24, '홈페이지 부품 버전', 'D', '1차·식별', false],
+  [23, '서버 버전 표시 + 알려진 취약점', 'D', '1차', true],
+  [24, '홈페이지 컴포넌트 버전', 'D', '1차·식별', false],
   [25, '지원 종료 버전', 'D', '1차', true],
   [26, 'HTTPS 미사용', 'E', '1차', true],
   [27, 'HTTP → HTTPS 자동 전환', 'E', '1차', true],
@@ -47,7 +47,7 @@ const CHECK_ROWS: [number, string, string, Check['phase'], boolean][] = [
   [31, '쿠키 보안 설정', 'E', '1차', true],
   [32, '메일 사칭 방지 (SPF·DMARC)', 'F', '1차', true],
   [33, '도메인 만료일', 'F', '1차', true],
-  [34, '백엔드 대행 서비스 공개 접근', 'C', '1차', true],
+  [34, 'BaaS 공개 접근', 'C', '1차', true],
 ]
 
 const CATEGORY_NAME: Record<string, string> = {
@@ -189,7 +189,7 @@ export const FINDINGS: FindingSeed[] = [
     fix_minutes: 30,
     guide: {
       title: '외부에서 열리는 채용 관리자 화면',
-      why_risky: '관리자 로그인 화면이 인터넷 어디서나 열려 비밀번호 대입 공격의 표적이 됩니다.',
+      why_risky: '관리자 로그인 화면이 인터넷 어디서나 열려 무차별 대입 공격의 표적이 됩니다.',
       expected_damage: '관리자 계정이 뚫리면 공고와 지원자 정보를 모두 볼 수 있습니다.',
       fix_steps: [
         '관리자 화면을 회사 IP나 VPN에서만 열리게 제한합니다.',

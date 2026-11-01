@@ -1,5 +1,5 @@
 // 발견 상세 패널 (SEED SidePanel). 대시보드 발견 목록과 조치 가이드 "기술 근거 보기"가 같이 쓴다.
-// 흐름: 부모가 findingId를 넘기면 열리고 → GET /findings/{id} → 점수 요소·산식·가린 증거를 보여 준다.
+// 흐름: 부모가 findingId를 넘기면 열리고 → GET /findings/{id} → 점수 요소·계산식·마스킹된 증거를 보여 준다.
 //       닫으면 부모의 onClose가 findingId를 비운다.
 
 import { Grid, HStack, Skeleton, Text, VStack } from '@seed-design/react'
@@ -101,7 +101,7 @@ function FindingDetailView({ findingId }: { findingId: string }) {
         {f.score.formula && <Code>{f.score.formula}</Code>}
       </Section>
 
-      <Section title="가린 증거">
+      <Section title="마스킹된 증거">
         <Code>{f.evidence}</Code>
         <Text textStyle="t2Regular" color="fg.neutralSubtle">
           개인정보와 비밀값은 가려서 저장합니다. 응답 원문은 보관하지 않습니다.
@@ -109,7 +109,7 @@ function FindingDetailView({ findingId }: { findingId: string }) {
       </Section>
 
       {f.cves.length > 0 && (
-        <Section title="알려진 약점(CVE)">
+        <Section title="알려진 취약점(CVE)">
           {f.cves.map((c) => (
             <Text key={c.id} textStyle="t4Regular" color="fg.neutral">
               {`${c.id} · CVSS ${c.cvss}${c.kev ? ' · 실제 악용 중' : ''}`}

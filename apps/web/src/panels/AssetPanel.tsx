@@ -108,11 +108,11 @@ function AssetDetail({ domainId, asset, onChanged }: { domainId: string; asset: 
 
       <VStack gap="x2">
         <Text textStyle="t3Bold" color="fg.neutralMuted">
-          {`부품·버전 (#24)${asset.tls_version ? ` · ${asset.tls_version}` : ''}`}
+          {`컴포넌트·버전 (#24)${asset.tls_version ? ` · ${asset.tls_version}` : ''}`}
         </Text>
         {asset.components.length === 0 ? (
           <Text textStyle="t4Regular" color="fg.neutralSubtle">
-            식별된 부품이 없습니다.
+            식별된 컴포넌트가 없습니다.
           </Text>
         ) : (
           asset.components.map((c) => (

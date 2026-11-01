@@ -1,4 +1,4 @@
-// 내용 영역의 바탕색. 고른 종이가 바뀌면 새 색이 물결 모양 앞머리로 왼쪽에서 오른쪽으로 쓸고 지나간다.
+// 내용 영역의 바탕색. 고른 종이가 바뀌면 새 색이 물결 모양 앞부분으로 왼쪽에서 오른쪽으로 쓸고 지나간다.
 //
 // 흐름
 //   shown  = 지금 깔려 있는 색 (바탕 div)
@@ -8,12 +8,12 @@
 // 움직임 줄이기 설정이면 바로 바꾼다.
 //
 // 글자색(ink): 제목 글자는 바탕 위에 바로 놓이므로 글자색도 바탕을 따라가야 한다.
-//   - 덮개가 제목 자리(왼쪽 40%)를 골까지 덮었으면 들어오는 종이의 ink, 아니면 깔려 있는 종이의 ink
-//   - 덮개가 없으면(같은 종이로 돌아왔거나 다 지나갔으면) 깔려 있는 종이의 ink
+//   - 오버레이가 제목 자리(왼쪽 40%)를 골까지 덮었으면 들어오는 종이의 ink, 아니면 깔려 있는 종이의 ink
+//   - 오버레이가 없으면(같은 종이로 돌아왔거나 다 지나갔으면) 깔려 있는 종이의 ink
 //   이 값이 바뀔 때마다 onInk로 알린다. AppShell이 --a2d-ink로 쓴다.
 //
-// 치수: overlay 폭은 내용 영역의 112%. 물결 앞머리는 overlay 안에서 (EDGE±AMP)/W = 91.6~98.4% 자리에 있어,
-// x=0에 닿았을 때 앞머리의 가장 뒤처진 골도 내용 영역의 102.6% 지점(오른쪽 밖)에 있다.
+// 치수: overlay 폭은 내용 영역의 112%. 물결 앞부분은 overlay 안에서 (EDGE±AMP)/W = 91.6~98.4% 자리에 있어,
+// x=0에 닿았을 때 앞부분의 가장 뒤처진 골도 내용 영역의 102.6% 지점(오른쪽 밖)에 있다.
 // 그래야 다 지나갔을 때 오른쪽에 이전 색 띠가 남지 않는다.
 
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -22,9 +22,9 @@ import { useEffect, useState } from 'react'
 const W = 1000
 const H = 1000
 const EDGE = 950 // 물결의 평균 위치 (0~1000)
-const AMP = 34 // 물결 높이. 클수록 앞머리가 또렷하게 굽이친다
+const AMP = 34 // 물결 높이. 클수록 앞부분이 또렷하게 굽이친다
 const WIDTH = 112 // overlay 폭 (내용 영역 폭의 %)
-// 앞머리의 가장 뒤처진 골이 내용 영역의 40%(제목 자리)를 지나는 x. motion의 x(%)는 overlay 자기 폭 기준이라
+// 앞부분의 가장 뒤처진 골이 내용 영역의 40%(제목 자리)를 지나는 x. motion의 x(%)는 overlay 자기 폭 기준이라
 // 내용 영역 기준 위치 = x·(WIDTH/100) + (EDGE−AMP)/W·WIDTH 를 40으로 놓고 x를 푼 값이다(≈ −55.9).
 const COVER_AT = (40 - ((EDGE - AMP) / W) * WIDTH) / (WIDTH / 100)
 
@@ -59,7 +59,7 @@ export function SheetWash({ paper, onInk }: SheetWashProps) {
   const reduce = useReducedMotion()
   const [shown, setShown] = useState(paper)
   const incoming = shown.id !== paper.id ? paper : null
-  // 지금 지나가는 덮개가 제목 자리를 덮었는지. 덮개가 새로 시작할 때(onAnimationStart) 지운다.
+  // 지금 지나가는 오버레이가 제목 자리를 덮었는지. 오버레이가 새로 시작할 때(onAnimationStart) 지운다.
   // 그래야 같은 종이로 갔다가 돌아온 뒤 다시 갈 때 지난번 값이 남아 글자색이 먼저 바뀌지 않는다.
   const [covered, setCovered] = useState(false)
 

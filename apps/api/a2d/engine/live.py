@@ -8,7 +8,7 @@
 
 대상에는 읽기(GET·DNS·TLS) 요청만 보내고, logout·delete처럼 상태를 바꿀 수 있는 이름의 경로는 열지 않는다.
 요청 수 상한은 기본으로 두지 않고(A2D_REQUEST_LIMIT=0), 같은 페이지·같은 틀의 페이지만 건너뛴다.
-호스트당 초당 2건과 점검 제한 시간(A2D_TIME_LIMIT_SEC)은 지킨다. 발견은 ctx.add_finding으로, 증거는 가린 발췌만 넘긴다.
+호스트당 초당 2건과 점검 제한 시간(A2D_TIME_LIMIT_SEC)은 지킨다. 발견은 ctx.add_finding으로, 증거는 마스킹된 발췌만 넘긴다.
 연결 통로(HTTP·DNS·TLS)는 engine.net의 구현을 쓰고, 테스트는 같은 자리에 가짜를 끼운다.
 #7·#15·#22·#29는 2차다.
 """
@@ -59,7 +59,7 @@ API_DOC_PATHS = ("/openapi.json", "/swagger.json", "/swagger", "/docs", "/api-do
 # 흔한 관리자 로그인 경로(#18). /wp-admin/은 로그인 화면으로 넘기기만 해서(302) 로그인 화면 주소를 직접 본다.
 ADMIN_PATHS = ("/admin", "/admin/", "/wp-login.php", "/phpmyadmin/", "/phpMyAdmin/", "/pma/",
                "/adm/", "/admin/login", "/administrator/", "/manager/", "/dashboard/login")
-# 크롤링(경로 찾기)을 하는 우리 서버 자산. 외부 위탁·클라우드·백엔드 대행 서비스는 따라가지 않는다
+# 크롤링(경로 찾기)을 하는 우리 서버 자산. 외부 위탁·클라우드·BaaS는 따라가지 않는다
 CRAWL_ROLES = ("web", "api", "admin", "dev")
 # API 서버는 링크가 없는 경우가 많아, 흔한 REST 자원 이름을 크롤링 시작점에 더한다(일반 API 점검 도구와 같은 방식)
 COMMON_API_PATHS = tuple(f"{prefix}/{res}" for prefix in ("/api", "/api/v1", "/v1")
@@ -95,7 +95,7 @@ DEBUG_MARKS = ("debug=true", "you're seeing this error because you have debug = 
                "/_next/static/development/", "webpack-hmr", "/@vite/client", "react-refresh",
                "action controller: exception caught", "laravel debugbar")
 
-# 백엔드 대행 서비스(#34). 설정 값은 우리 화면 코드에 적힌 것만 쓴다(프로젝트 이름을 추측하지 않는다)
+# BaaS(#34). 설정 값은 우리 화면 코드에 적힌 것만 쓴다(프로젝트 이름을 추측하지 않는다)
 _SUPABASE_HOST = re.compile(r"\b([a-z0-9]{20})\.supabase\.co\b", re.I)
 _SB_PUBLISHABLE = re.compile(r"\bsb_publishable_[A-Za-z0-9_-]{20,}")
 _FB_PROJECT = re.compile(r"""projectId["']?\s*[:=]\s*["']([a-z0-9-]{4,40})["']""")
@@ -166,7 +166,7 @@ _CLOUD_HOST = re.compile(r'([a-z0-9.\-]+\.s3[a-z0-9.\-]*\.amazonaws\.com|[a-z0-9
 _GENERATOR = re.compile(r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']{1,60})', re.I)
 _JQUERY = re.compile(r"jquery[.@-]?v?(\d+\.\d+\.\d+)", re.I)
 _GENERATOR_VERSION = re.compile(r"^(.+?)\s+v?(\d+(?:\.\d+)*)\s*$")
-# 버전은 몰라도 쓰는 것만은 알 수 있는 부품(#24 식별 범위: 기존 방식 + 바이브코딩 방식)
+# 버전은 몰라도 쓰는 것만은 알 수 있는 컴포넌트(#24 식별 범위: 기존 방식 + 바이브코딩 방식)
 _FRAMEWORK_MARKS = (
     ("WordPress", ("/wp-content/", "/wp-includes/")),
     ("그누보드", ("g5_url", "/gnuboard")),
@@ -238,7 +238,7 @@ class LiveEngine(Engine):
             await self._ensure_reachable(http, assets)
             ctx.set_stage("discovering", "자산과 페이지를 찾는 중", 1, 1)
 
-            # 같은 서비스를 가리키는 꼭짓점·www 자산에 점검이 겹치지 않게, 대표 웹 자산 하나만 깊게 본다.
+            # 같은 서비스를 가리키는 루트·www 자산에 점검이 겹치지 않게, 대표 웹 자산 하나만 깊게 본다.
             domain = ctx.domain.lower().strip(".")
             primary_host = self._primary_host(assets, domain)
 
@@ -298,7 +298,7 @@ class LiveEngine(Engine):
         domain = ctx.domain.lower().strip(".")
         found: dict[str, Asset] = {}
 
-        # #1 하위 도메인 찾기 + 꼭짓점 도메인. DNS는 블로킹이라 스레드로 보내고, 사이사이 중지를 확인한다.
+        # #1 하위 도메인 찾기 + 루트 도메인. DNS는 블로킹이라 스레드로 보내고, 사이사이 중지를 확인한다.
         # DNS가 답하지 않으면 '없음'으로 넘기지 않고, 연달아 실패하면 점검을 실패로 끝낸다.
         failures = 0
         for host in [domain] + [f"{w}.{domain}" for w in SUBDOMAIN_WORDS]:
@@ -346,7 +346,7 @@ class LiveEngine(Engine):
                           f"(같은 틀이라 건너뜀 {hm.skipped_same_template}, 상태를 바꿀 수 있어 안 엶 "
                           f"{hm.skipped_unsafe}, 페이지 상한으로 건너뜀 {hm.skipped_page_limit})")
 
-        # 찾은 모든 화면·JS에 적힌 클라우드 저장소(#14)와 백엔드 대행 서비스(#34). 이름을 추측하지 않는다
+        # 찾은 모든 화면·JS에 적힌 클라우드 저장소(#14)와 BaaS(#34). 이름을 추측하지 않는다
         cloud_hosts: set[str] = set()
         baas: dict[str, dict] = {}
         for hm in site.maps.values():
@@ -372,7 +372,7 @@ class LiveEngine(Engine):
         for host, conf in sorted(baas.items()):
             if host not in found:
                 found[host] = Asset(host, conf["alias"], "baas", 5,
-                                    "우리 화면 코드가 쓰는 백엔드 대행 서비스", found_by=[34], tags=["baas"],
+                                    "우리 화면 코드가 쓰는 BaaS", found_by=[34], tags=["baas"],
                                     baas=conf)
 
         # 인증서·TLS 버전: 우리 서버 자산마다 한 번씩, 동시에 본다(자산 정보 표시와 #28이 함께 쓴다)
@@ -461,7 +461,7 @@ class LiveEngine(Engine):
         admin_found = False
         hm = hm or HostMap(a.host)
 
-        if a.role == "web" and a.host == primary_host:  # 대표 웹 자산에서만(꼭짓점·www 중복 방지)
+        if a.role == "web" and a.host == primary_host:  # 대표 웹 자산에서만(루트·www 중복 방지)
             # 없는 주소부터 본다. 그 응답(모르는 경로를 index로 돌려주는 SPA 등)을 아래 경로 점검이 걸러 쓴다.
             catch_all = await self._check_error_page(ctx, http, a)  # #11
             await self._check_files(ctx, http, a, catch_all, hm)    # #8 #9 #10
@@ -502,7 +502,7 @@ class LiveEngine(Engine):
             r = await http.get_cached(f"https://{a.host}{path}")
             if r is not None and r.status == 200 and _looks_like_file(r) and not _same_as(r, catch_all):
                 self._add(ctx, a, 8, "confirmed", f"GET {r.url}",
-                          _clip(f"{path} 200 응답, 파일 형식 확인(가림)"))
+                          _clip(f"{path} 200 응답, 파일 형식 확인(마스킹)"))
                 break  # 자산당 한 건
         reported: set[str] = set()
         for path, situation in CONFIG_PATHS:
@@ -511,7 +511,7 @@ class LiveEngine(Engine):
             r = await http.get(f"https://{a.host}{path}")
             if (r is not None and r.status == 200 and not _same_as(r, catch_all)
                     and _config_file_matches(path, r)):
-                self._add(ctx, a, 9, situation, f"GET {r.url}", f"{path} 200 응답, 파일 형식 확인(가림)")
+                self._add(ctx, a, 9, situation, f"GET {r.url}", f"{path} 200 응답, 파일 형식 확인(마스킹)")
                 reported.add(situation)
         # 파일 목록(#10): 크롤링이 연 폴더는 _check_crawled_pages가 본다. 링크가 없는 흔한 업로드 폴더만 더 연다
         for path in ("/uploads/", "/upload/", "/files/", "/data/", "/backup/"):
@@ -528,7 +528,7 @@ class LiveEngine(Engine):
         low = r.text.lower()
         if r.status >= 500 or "traceback" in low or "stack trace" in low or "sqlalchemy" in low:
             self._add(ctx, a, 11, "basic", f"GET {r.url}",
-                      f"없는 주소에 오류 {r.status}, 내부 코드 기록·경로 노출(가림)")
+                      f"없는 주소에 오류 {r.status}, 내부 코드 기록·경로 노출(마스킹)")
         return r if r.status == 200 else None
 
     # ---------------------------------------------------------------- #12 #13
@@ -545,7 +545,7 @@ class LiveEngine(Engine):
             kinds = [k for k in _secret_kinds(text) if k not in reported]
             if kinds:
                 reported |= set(kinds)
-                self._add(ctx, a, 12, "secret", f"GET {url}", _clip(f"{where}에 {'·'.join(kinds)} 형태 키 노출(가림)"))
+                self._add(ctx, a, 12, "secret", f"GET {url}", _clip(f"{where}에 {'·'.join(kinds)} 형태 키 노출(마스킹)"))
         maps: list[Fetched] = []
         for url, js in sorted(hm.scripts.items()):
             map_url = _sourcemap_url(js.text, url)
@@ -559,7 +559,7 @@ class LiveEngine(Engine):
             if kinds:
                 reported |= set(kinds)
                 self._add(ctx, a, 12, "secret", f"GET {mapr.url}",
-                          _clip(f"소스맵 안에 {'·'.join(kinds)} 형태 키 노출(가림)"))
+                          _clip(f"소스맵 안에 {'·'.join(kinds)} 형태 키 노출(마스킹)"))
         if maps:
             self._add(ctx, a, 13, "basic", f"GET {maps[0].url}",
                       _clip(f"소스맵(.map) {len(maps)}개 공개" if len(maps) > 1 else "소스맵(.map) 공개"))
@@ -578,10 +578,10 @@ class LiveEngine(Engine):
                 error = (path, r)
         if listing is not None:
             situation = "sensitive" if SENSITIVE_NAME.search(listing[1].text) else "basic"
-            self._add(ctx, a, 10, situation, f"GET {listing[1].url}", "디렉터리 목록 공개(파일 이름 가림)")
+            self._add(ctx, a, 10, situation, f"GET {listing[1].url}", "디렉터리 목록 공개(파일 이름 마스킹)")
         if error is not None and 11 not in a.reported:
             self._add(ctx, a, 11, "basic", f"GET {error[1].url}",
-                      _clip(f"{error[0]}에서 오류 {error[1].status}, 내부 코드 기록·경로 노출(가림)"))
+                      _clip(f"{error[0]}에서 오류 {error[1].status}, 내부 코드 기록·경로 노출(마스킹)"))
 
     def _check_crawled_admin(self, ctx, a: Asset, hm: HostMap) -> bool:
         for path, r in sorted(hm.pages.items()):
@@ -603,7 +603,7 @@ class LiveEngine(Engine):
             php = path in ("/phpinfo.php", "/info.php", "/test.php")
             if path in ("/actuator/env", "/_ignition/health-check", "/telescope/requests") or \
                     (php and ("password" in low or "secret" in low)):
-                self._add(ctx, a, 20, "env", f"GET {r.url}", f"{path} 공개, 환경 변수·비밀값 노출(가림)")
+                self._add(ctx, a, 20, "env", f"GET {r.url}", f"{path} 공개, 환경 변수·비밀값 노출(마스킹)")
             else:
                 self._add(ctx, a, 20, "status", f"GET {r.url}", f"{path} 공개, 서버 상태·통계 노출")
 
@@ -658,7 +658,7 @@ class LiveEngine(Engine):
         where = f"{count}건" if count is not None else "데이터"
         more = f" 외 {len(hits) - 1}곳({', '.join(h[0] for h in hits[1:4])})" if len(hits) > 1 else ""
         self._add(ctx, a, 16, "pii", f"GET {r.url}",
-                  _clip(f"{r.status} 응답, {where}에 {'·'.join(kinds)} 형식 포함(가림){more}"))
+                  _clip(f"{r.status} 응답, {where}에 {'·'.join(kinds)} 형식 포함(마스킹){more}"))
 
     async def _probe_api_doc(self, http, a: Asset, doc: Fetched | None, hm: HostMap) -> None:
         """API 설명서(OpenAPI)에 적힌 변수 없는 GET 경로를 부르고 결과를 크롤링 기록에 더한다(#16 대상)."""
@@ -706,7 +706,7 @@ class LiveEngine(Engine):
                     names[name] = None
         return list(names)[:CT_NAME_LIMIT]
 
-    # ================================================================ #34 백엔드 대행 서비스
+    # ================================================================ #34 BaaS
 
     async def _check_baas(self, ctx, http, a: Asset) -> None:
         conf = a.baas or {}
@@ -756,7 +756,7 @@ class LiveEngine(Engine):
         if pii is not None:
             t, kinds, r = pii
             self._add(ctx, a, 34, "pii", f"GET {base}/{t}?limit=1",
-                      _clip(f"공개 키로 테이블 {len(open_tables)}개 읽힘({names}). {t}에 {'·'.join(kinds)} 형식(가림)"))
+                      _clip(f"공개 키로 테이블 {len(open_tables)}개 읽힘({names}). {t}에 {'·'.join(kinds)} 형식(마스킹)"))
         else:
             self._add(ctx, a, 34, "data", f"GET {first.url if first else base}",
                       _clip(f"공개 키로 테이블 {len(open_tables)}개 읽힘({names}), 개인정보 형태는 아님"))
@@ -774,7 +774,7 @@ class LiveEngine(Engine):
                     keys = []
                 if keys:
                     self._add(ctx, a, 34, "firebase", f"GET {db}/.json?shallow=true",
-                              f"Realtime Database 공개 읽기, 최상위 항목 {len(keys)}개(이름 가림)")
+                              f"Realtime Database 공개 읽기, 최상위 항목 {len(keys)}개(이름 마스킹)")
                     reported = True
                     break
         pid = conf.get("project")
@@ -787,7 +787,7 @@ class LiveEngine(Engine):
                     continue
                 kinds = _firestore_pii(r.text)
                 situation = "pii" if kinds else "data"
-                detail = f", {'·'.join(kinds)} 형식(가림)" if kinds else ", 개인정보 형태는 아님"
+                detail = f", {'·'.join(kinds)} 형식(마스킹)" if kinds else ", 개인정보 형태는 아님"
                 self._add(ctx, a, 34, situation, f"GET {url}",
                           _clip(f"Firestore {col} 컬렉션 공개 읽기{detail}"))
                 break
@@ -796,7 +796,7 @@ class LiveEngine(Engine):
             r = await http.get(url)
             if r is not None and r.status == 200 and '"items"' in r.text:
                 situation = "sensitive" if SENSITIVE_NAME.search(r.text) else "listing"
-                self._add(ctx, a, 14, situation, f"GET {url}", "Firebase Storage 파일 목록 공개(파일 이름 가림)")
+                self._add(ctx, a, 14, situation, f"GET {url}", "Firebase Storage 파일 목록 공개(파일 이름 마스킹)")
                 break
 
     # ---------------------------------------------------------------- #21
@@ -843,7 +843,7 @@ class LiveEngine(Engine):
         if "listbucketresult" in r.text.lower():
             situation = "sensitive" if SENSITIVE_NAME.search(r.text) else "listing"
             self._add(ctx, a, 14, situation, f"GET {r.url}",
-                      "클라우드 저장소 파일 목록 공개(파일 이름 가림)")
+                      "클라우드 저장소 파일 목록 공개(파일 이름 마스킹)")
 
     # ---------------------------------------------------------------- #6
     async def _check_dangling(self, ctx, http, a: Asset) -> None:
@@ -870,7 +870,7 @@ class LiveEngine(Engine):
         await self._check_tls(ctx, a)              # #28
 
     async def _check_version(self, ctx, http, a: Asset, r: Fetched) -> None:
-        """응답 헤더의 서버 버전을 공개 자료와 대조한다. #23은 NVD(알려진 약점)와 CISA KEV(실제 악용),
+        """응답 헤더의 서버 버전을 공개 자료와 대조한다. #23은 NVD(알려진 취약점)와 CISA KEV(실제 악용),
         #25는 endoflife.date(지원 종료). 조회에 실패하면 '모름'이라 보고하지 않는다."""
         server = r.header("server") or ""
         powered = r.header("x-powered-by") or ""
@@ -882,7 +882,7 @@ class LiveEngine(Engine):
                 shown = ", ".join(f"{v['id']}({'KEV' if v.get('kev') else 'CVSS ' + str(v.get('cvss'))})"
                                   for v in top[:3])
                 self._add(ctx, a, 23, _vuln_situation(vulns), f"GET {r.url}",
-                          _clip(f"서버 버전 {product} {version}, 알려진 약점 {len(vulns)}건"
+                          _clip(f"서버 버전 {product} {version}, 알려진 취약점 {len(vulns)}건"
                                 f"(실제 악용 {kev}건): {shown}"), cves=top)
             if await intel.end_of_life(http, product, version):
                 self._add(ctx, a, 25, "server", f"GET {r.url}", f"{product} {version}은 지원이 끝난 버전")
@@ -963,7 +963,7 @@ class LiveEngine(Engine):
             situation, ev = "none", "SPF·DMARC가 사칭을 막지 못함"
         else:
             return
-        # 도메인 자체 발견: 꼭짓점 자산(web)에 붙인다
+        # 도메인 자체 발견: 루트 자산(web)에 붙인다
         host = f"www.{domain}"
         self._add_host(ctx, host, 32, situation, f"DNS {domain}", ev) or \
             self._add_host(ctx, domain, 32, situation, f"DNS {domain}", ev)
@@ -991,7 +991,7 @@ class LiveEngine(Engine):
 # ==================================================================== 보조 함수
 
 def _identify_components(home: Fetched) -> list[dict]:
-    """#24 홈페이지 부품 식별. 이미 받은 첫 화면(본문·헤더)만 읽는다. 점수에는 넣지 않고 자산 정보에 표시한다."""
+    """#24 홈페이지 컴포넌트 식별. 이미 받은 첫 화면(본문·헤더)만 읽는다. 점수에는 넣지 않고 자산 정보에 표시한다."""
     comps: list[dict] = []
 
     def add(name: str, version: str, eol: bool = False) -> None:

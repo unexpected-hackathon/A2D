@@ -137,7 +137,7 @@ def test_report_retries_with_reason_then_passes(make_client):
     def reply(body, n):
         if len(body["messages"]) == 2:  # 첫 요청은 없는 CVE를 지어낸다
             out = json.loads(good_item(body))
-            out["why_risky"] += " CVE-2024-12345 약점입니다."
+            out["why_risky"] += " CVE-2024-12345 취약점입니다."
             return json.dumps(out, ensure_ascii=False)
         return good_item(body)
 
@@ -211,7 +211,7 @@ def test_verify_accepts_grounded_item():
     ({"finding_id": "F-9999"}, "finding_id"),
     ({"why_risky": "api 서버에서 지원자 5000명의 연락처가 보입니다."}, "데이터에 없는 숫자"),
     ({"why_risky": "api와 www 서버 모두에서 연락처가 보입니다."}, "다른 항목의 자산"),
-    ({"why_risky": "api 서버에 CVE-2021-44228 약점이 있습니다."}, "증거에 없는 CVE"),
+    ({"why_risky": "api 서버에 CVE-2021-44228 취약점이 있습니다."}, "증거에 없는 CVE"),
     ({"fix_step_ids": [0]}, "없는 조치 번호"),
     ({"fix_step_ids": []}, "fix_step_ids가 비어"),
     ({"expected_damage": "会员信息可能泄露。"}, "한자"),
@@ -358,7 +358,7 @@ def attack_setup(reply, *, budget=None, requests_limit=300, tool_calls_limit=20)
     async def unauth(args, scope):
         calls.append(("check_unauth_api", args.model_dump()))
         budget.requests_used += 1
-        return ToolResult({"status": "finding", "finding_id": "F-0012", "evidence": "200 응답(가림)"}, "발견 1건")
+        return ToolResult({"status": "finding", "finding_id": "F-0012", "evidence": "200 응답(마스킹)"}, "발견 1건")
 
     ctx = SimpleNamespace(budget=budget, audit=audit)
     handlers = {"probe_http": probe, "check_unauth_api": unauth}

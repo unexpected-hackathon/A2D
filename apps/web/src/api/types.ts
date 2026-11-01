@@ -167,7 +167,7 @@ export interface FindingDetail extends Omit<FindingSummary, 'first_seen_scan_id'
     asset_importance_fixed: boolean
     confidence_factor: number
     risk_score: number
-    formula: string | null // 참고 정보(info)는 산식이 없다
+    formula: string | null // 참고 정보(info)는 계산식이 없다
   }
   evidence: string
   cves: { id: string; cvss: number; kev: boolean }[]

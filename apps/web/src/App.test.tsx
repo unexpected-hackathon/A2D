@@ -35,7 +35,7 @@ describe('대시보드', () => {
     expect(screen.getByText('발견')).toBeInTheDocument()
   })
 
-  it('발견을 누르면 기술 근거 패널에 산식이 보인다', async () => {
+  it('발견을 누르면 기술 근거 패널에 계산식이 보인다', async () => {
     await renderApp('/dashboard')
     await userEvent.click(await screen.findByText('인증 없는 API', {}, TIMEOUT))
     expect(await screen.findByText('기술 근거', {}, TIMEOUT)).toBeInTheDocument()

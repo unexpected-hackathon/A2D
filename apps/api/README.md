@@ -71,7 +71,7 @@ a2d/
 
 ### 점검 엔진 붙이기
 
-엔진은 `engine.base.Engine`을 상속해 `run(ctx)`를 구현하고, `.env`의 `A2D_ENGINE=패키지.모듈:클래스`로 바꿔 끼운다(생성자는 `Settings`를 받는다). 엔진은 `ctx.add_asset`·`ctx.add_finding`으로 자산과 발견만 넘긴다. 발견 ID·점수·오늘 할 일·조치 가이드는 API가 만든다. 발견의 `situation`은 `catalog.SITUATIONS`의 키(예: `#16 "pii"`)이고, 증거는 가린 발췌(200자 이내)만 넘긴다.
+엔진은 `engine.base.Engine`을 상속해 `run(ctx)`를 구현하고, `.env`의 `A2D_ENGINE=패키지.모듈:클래스`로 바꿔 끼운다(생성자는 `Settings`를 받는다). 엔진은 `ctx.add_asset`·`ctx.add_finding`으로 자산과 발견만 넘긴다. 발견 ID·점수·오늘 할 일·조치 가이드는 API가 만든다. 발견의 `situation`은 `catalog.SITUATIONS`의 키(예: `#16 "pii"`)이고, 증거는 마스킹된 발췌(200자 이내)만 넘긴다.
 
 기본은 `A2D_ENGINE=a2d.engine.live:LiveEngine`(실제 점검)이다.
 
@@ -87,9 +87,9 @@ a2d/
 
 ### LLM 붙이기
 
-GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 되고, 조치 가이드와 질의응답이 LLM을 쓴다. 호출은 모두 `a2d/agents/__init__.py`에 있다. 추가 점검(`run_attack`)은 도구 호출 루프·가드 층(`a2d/agents/tools.py`)과 점검 핸들러(`a2d/agents/handlers.py`의 `probe_http`·`check_unauth_api`)까지 붙어 있다. 핸들러는 대상에 읽기(GET) 요청만 보내고(식별 User-Agent, 요청 10초·호스트당 초당 2건, `A2D_REQUEST_LIMIT`을 주면 그 상한까지), 발견은 가린 증거만 저장한다.
+GPU 서버 vLLM은 사설망에 있어 노트북의 SSH 터널로만 닿는다. `.env`의 `A2D_LLM_BASE_URL`에 터널 주소(`http://127.0.0.1:18000/v1`, Compose로 띄우면 [model/README.md](../../model/README.md#백엔드에서-부르기) 표 참고)와 `A2D_LLM_API_KEY`·`A2D_LLM_MODEL=qwen3-8b`를 넣으면 `/health`의 `llm`이 `up`이 되고, 조치 가이드와 질의응답이 LLM을 쓴다. 호출은 모두 `a2d/agents/__init__.py`에 있다. 추가 점검(`run_attack`)은 도구 호출 루프·가드 층(`a2d/agents/tools.py`)과 점검 핸들러(`a2d/agents/handlers.py`의 `probe_http`·`check_unauth_api`)까지 붙어 있다. 핸들러는 대상에 읽기(GET) 요청만 보내고(식별 User-Agent, 요청 10초·호스트당 초당 2건, `A2D_REQUEST_LIMIT`을 주면 그 상한까지), 발견은 마스킹된 증거만 저장한다.
 
-LLM에는 발견 ID, 점검 항목, 자산 별칭, 점수 요소, 가린 증거, 팀이 쓴 기본 가이드만 보낸다. 발견 위치(URL)와 응답 원문은 보내지 않는다. 답은 vLLM 구조화 출력(`response_format` json_schema)으로 JSON만 받는다. 서버가 이를 거절하면 schema 없이 다시 보내고, 답에서 JSON을 꺼내 쓴다.
+LLM에는 발견 ID, 점검 항목, 자산 별칭, 점수 요소, 마스킹된 증거, 팀이 쓴 기본 가이드만 보낸다. 발견 위치(URL)와 응답 원문은 보내지 않는다. 답은 vLLM 구조화 출력(`response_format` json_schema)으로 JSON만 받는다. 서버가 이를 거절하면 schema 없이 다시 보내고, 답에서 JSON을 꺼내 쓴다.
 
 **조치 가이드(`write_report`, FR-07·08).** 점검이 끝날 때 오늘 할 일 3항목을 동시에 요청한다(서버 속도가 초당 약 16토큰이라 순서대로면 1분이 넘는다). LLM은 제목·왜 위험한가·예상 피해를 쓰고, 조치 방법은 기본 가이드의 단계 중에서 번호로 고르기만 한다. 순위·발견 ID·조치 시간·조치 후 점수는 코드가 넣는다. 항목마다 코드가 근거 검증(상세설계 4절)을 한다.
 

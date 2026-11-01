@@ -1,7 +1,7 @@
 """Attack 점검 핸들러(probe_http·check_unauth_api)를 가짜 대상 서버로 확인한다.
 
 httpx.MockTransport로 시연 대상(JobNest)의 응답을 흉내 낸다. 실제 네트워크는 쓰지 않는다.
-읽기 전용·User-Agent·요청 예산·속도 제한·증거 가림·발견 기록을 확인한다.
+읽기 전용·User-Agent·요청 예산·속도 제한·증거 마스킹·발견 기록을 확인한다.
 """
 
 import asyncio
@@ -183,9 +183,9 @@ def test_unauth_api_records_pii_finding():
 
     assert out.data["status"] == "finding" and out.data["check_id"] == 16
     assert out.data["finding_id"] == findings[0][0]
-    # 가린 증거만 나가고 실제 이메일·전화번호는 없다
+    # 마스킹된 증거만 나가고 실제 이메일·전화번호는 없다
     ev = out.data["evidence"]
-    assert "가림" in ev and "2건" in ev  # 실제로 돌아온 항목 수(total이 아니라 반환된 개수)
+    assert "마스킹" in ev and "2건" in ev  # 실제로 돌아온 항목 수(total이 아니라 반환된 개수)
     assert "example.com" not in ev and "010-0000" not in ev
     assert len(ev) <= 200
     # 저장된 발견: #16, situation pii, location은 저장만(증거에 원문 없음)

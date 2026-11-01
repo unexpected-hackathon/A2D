@@ -68,7 +68,7 @@ git branch -D fix/api-score
 | `feat/api-domain-verify` | 백엔드: DNS TXT 소유권 확인 |
 | `feat/web-dashboard` | 프론트엔드: 대시보드 화면 |
 | `feat/model-vllm-serve` | vLLM 서빙 스크립트 |
-| `feat/target-backup-leak` | 피공격 서버에 백업 파일 노출 결함 심기 |
+| `feat/target-backup-leak` | 타깃 서버에 백업 파일 노출 결함 심기 |
 | `fix/api-score-overflow` | 점수 계산 버그 수정 |
 | `docs/prd-milestone` | PRD 마일스톤 수정 |
 
@@ -136,7 +136,7 @@ docs(docs): PRD에 재점검 흐름 추가
 
 - **비밀값을 커밋하지 않는다.** API 키, GPU 서버 주소·계정, VPN 정보는 `.env`에 두고 `.env.example`에는 키 이름만 적는다.
 - **`private/`는 git에서 제외된다.** 대회 가이드, 서버 매뉴얼, 멘토링·발표 준비, 내부 결정 기록처럼 공개하지 않는 자료는 이 폴더에 둔다.
-- **피공격 서버(`target/`)는 시연 환경 밖에 띄우지 않는다.** 결함을 일부러 심은 서버다. 자세한 규칙은 [target/README.md](target/README.md)를 본다.
+- **타깃 서버(`target/`)는 시연 환경 밖에 띄우지 않는다.** 결함을 일부러 심은 서버다. 자세한 규칙은 [target/README.md](target/README.md)를 본다.
 - **새 외부 자원은 README의 외부 자원 표에 적는다.** 라이브러리, 모델, 데이터셋, 외부 API 모두 해당한다.
 
 ## 6. 저장소 설정

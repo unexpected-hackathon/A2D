@@ -1,4 +1,4 @@
-// 발견 등급·조직 등급·확실성 배지. 색과 글자는 theme/severity.ts에서만 가져온다.
+// 발견 등급·조직 등급·신뢰도 배지. 색과 글자는 theme/severity.ts에서만 가져온다.
 
 import { Badge } from 'seed-design/ui/badge'
 import type { Confidence, Grade, Severity } from '../api/types'

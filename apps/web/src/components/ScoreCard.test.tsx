@@ -1,4 +1,4 @@
-// 점수 카드: 점수·등급을 읽을 수 있게 보여 주고, 재점검 버튼과 산식 펼치기가 동작하는지 확인한다.
+// 점수 카드: 점수·등급을 읽을 수 있게 보여 주고, 재점검 버튼과 계산식 펼치기가 동작하는지 확인한다.
 
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -56,9 +56,9 @@ describe('ScoreCard', () => {
     expect(screen.getByRole('button', { name: /점검 중/ })).toBeInTheDocument()
   })
 
-  it('"산식 보기"를 누르면 조직 위험 산식과 안전 점수 계산이 보인다', async () => {
+  it('"계산식 보기"를 누르면 조직 위험 계산식과 안전 점수 계산이 보인다', async () => {
     renderCard()
-    await userEvent.click(screen.getByRole('button', { name: '산식 보기' }))
+    await userEvent.click(screen.getByRole('button', { name: '계산식 보기' }))
     expect(screen.getByText(/조직 위험 0\.7 × 100.*안전 점수 100 − 80 = 20/)).toBeInTheDocument()
   })
 })

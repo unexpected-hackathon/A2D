@@ -6,7 +6,7 @@ Guard는 아래 순서로 거르고, 통과한 호출만 등록된 핸들러에 
 1. 예산: 도구 호출 횟수(Budget.tool_calls_limit). 거부·중복 호출도 한 번으로 센다(같은 실수를 되풀이하는 루프를 막는다)
 2. 허용 목록: 이 에이전트에 등록되고 핸들러가 붙은 도구만
 3. 인자 검증: Pydantic 모델(extra="forbid"). 스키마에 맞지 않으면 실행하지 않는다
-4. 범위: asset_id는 소유권이 확인된 자산만, endpoint_id는 그 자산에서 찾은 조회형(GET) 엔드포인트만.
+4. 범위: asset_id는 소유권이 확인된 자산만, endpoint_id는 그 자산에서 찾은 GET 엔드포인트만.
    경로에 번호 변수가 있는 엔드포인트는 부르지 않는다(번호를 바꿔 가며 반복 호출하지 않는다)
 5. 요청 예산: 대상에 요청을 보내는 도구는 Budget.requests_limit을 넘으면 거부
 6. 중복 방지: 같은 도구를 같은 인자로 다시 부르면 저장된 결과를 돌려준다
@@ -90,7 +90,7 @@ ATTACK_TOOLS: tuple[ToolSpec, ...] = (
              "자산 하나의 웹 응답을 다시 확인하고 그 자산에서 쓰는 API 엔드포인트 ID를 찾는다.",
              AssetArgs, sends_requests=True),
     ToolSpec("check_unauth_api", "attack",
-             "API 문서나 화면 코드에서 찾은 조회형(GET) 엔드포인트 하나를 인증 없이 한 번 호출해 "
+             "API 문서나 화면 코드에서 찾은 GET 엔드포인트 하나를 인증 없이 한 번 호출해 "
              "개인정보가 응답되는지 확인한다. 번호를 바꿔 가며 반복 호출하지 않는다.",
              EndpointArgs, sends_requests=True),
     ToolSpec("finish_scan", "attack",
@@ -106,7 +106,7 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in ATTACK_TOOLS}
 # '보기만' 하므로, 핸들러가 직접 지켜야 할 것이 있다(agents.handlers.AttackProbe가 그 예다):
 #   - 요청을 보낼 때마다 ctx.budget.requests_used += 1 (가드는 올리지 않는다)
 #   - 요청 사이 ctx.budget.check() (중지 요청·제한 시간 받기)
-#   - 발견은 ctx.add_finding으로 저장소에 기록하고 결과에는 발견 ID·가린 증거만 담는다
+#   - 발견은 ctx.add_finding으로 저장소에 기록하고 결과에는 발견 ID·마스킹된 증거만 담는다
 # 비어 있으면 Attack 에이전트는 기본 도구(list_assets·finish_scan, Guard 내장)만 쓴다.
 ATTACK_HANDLERS: dict[str, "Handler"] = {}
 
@@ -176,7 +176,7 @@ class Scope:
             return None
         reason = None
         if method != "GET":
-            reason = "조회형(GET) 엔드포인트가 아님"
+            reason = "GET 엔드포인트가 아님"
         elif _TEMPLATED.search(path):
             reason = "경로에 번호 변수가 있어 호출하지 않음(번호를 바꿔 가며 부르지 않는다)"
         e = Endpoint(f"E-{len(self.endpoints) + 1:02d}", asset_id, method, path, reason is None, reason)
@@ -193,7 +193,7 @@ class Scope:
 
 @dataclass
 class ToolResult:
-    """핸들러가 돌려주는 값. data는 LLM에 그대로 가므로 발견 ID·상태·가린 증거만 담는다(응답 원문 금지)."""
+    """핸들러가 돌려주는 값. data는 LLM에 그대로 가므로 발견 ID·상태·마스킹된 증거만 담는다(응답 원문 금지)."""
 
     data: dict
     summary: str  # 감사 기록에 남길 한 줄

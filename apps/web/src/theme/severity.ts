@@ -34,7 +34,7 @@ export const GRADE_BANDS: { grade: Grade; from: number; to: number }[] = [
 // 발견 등급을 보여 주는 순서(참고 정보는 개수에 넣지 않는다).
 export const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low']
 
-// 확실성은 같은 색에서 표시 방식만 바꾼다: 진하게 → 옅게 → 테두리만.
+// 신뢰도는 같은 색에서 표시 방식만 바꾼다: 진하게 → 옅게 → 테두리만.
 export const confidenceStyle: Record<
   Confidence,
   { label: string; variant: 'solid' | 'weak' | 'outline' }
