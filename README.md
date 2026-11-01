@@ -47,6 +47,71 @@ A2D는 세 막짜리 이야기에서 출발했다. 근거는 [문제 정의 근�
 
 작업 방식(GitHub flow, 브랜치·커밋·PR 규칙)은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
 
+## 아키텍처
+
+화면(`apps/web`)은 백엔드(`apps/api`)의 HTTP API만 부른다. 백엔드 안에서 점검 엔진(`engine/`)이 소유권을 증명한 대상에 **읽기 전용** 요청을 보내 자산과 발견을 만들고, 점수와 오늘 할 일은 코드(`scoring.py`)가 계산하며, LLM(`agents/`)은 추가 점검 계획과 조치 설명만 맡는다. LLM이 없어도 점검·점수·기본 가이드는 동작한다.
+
+```mermaid
+flowchart LR
+  web["apps/web<br/>React + SEED<br/>등록 · 대시보드 · 조치 가이드 · 기록"]
+  subgraph api["apps/api — FastAPI /api/v1"]
+    main["main.py<br/>라우팅 · 세션 로그인 · Origin 검사"]
+    svc["service.py<br/>소유권 · 점검 실행 · 점수 · 가이드 · 기록"]
+    store[("store.py<br/>SQLite")]
+    scoring["scoring.py<br/>위험 · 안전 점수, 오늘 할 일"]
+    subgraph engine["engine/ — LiveEngine"]
+      live["live.py<br/>자산 찾기 · 점검 34개 판정"]
+      crawl["crawl.py<br/>사이트 전체 크롤러"]
+      intel["intel.py<br/>공개 자료 조회"]
+      net["net.py<br/>HTTP GET · DNS · TLS"]
+    end
+    subgraph agents["agents/ — Attack · Defense"]
+      tools["tools.py<br/>도구 등록표 · 가드 층"]
+      handlers["handlers.py<br/>Attack 점검 핸들러"]
+    end
+    main --> svc
+    svc --> store
+    svc --> scoring
+    svc --> live
+    live --> crawl
+    live --> intel
+    live --> net
+    crawl --> net
+    intel --> net
+    svc --> tools
+    tools --> handlers
+    handlers --> net
+  end
+  target[("점검 대상<br/>DNS TXT로 소유권을 증명한 도메인")]
+  public[("공개 자료<br/>crt.sh · NVD · CISA KEV · endoflife.date · RDAP")]
+  llm["model/ — vLLM Qwen3-8B<br/>GPU 서버, SSH 터널로만 접속"]
+  web -- "세션 쿠키, vite proxy /api" --> main
+  net -- "읽기 전용 GET · DNS · TLS, 호스트당 초당 2건" --> target
+  net -- "제품 · 버전 · 공개 도메인명만" --> public
+  tools -- "OpenAI 호환 /v1, 도구 호출" --> llm
+```
+
+### 점검 1회의 흐름
+
+1. **등록·소유권** — 화면에서 도메인을 등록하면 `service.py`가 TXT 값을 만들고, `dnspython`으로 `_a2d-verify.<도메인>` 레코드를 확인한 도메인만 점검 대상이 된다.
+2. **자산 찾기** — `live.py`가 하위 도메인 단어 목록(#1)과 crt.sh 인증서 발급 기록(#5)으로 호스트를 모으고, `crawl.py`가 첫 화면·robots·사이트맵·JS 번들을 따라 같은 도메인 안의 경로를 찾는다.
+3. **기본 점검** — `live.py`가 모은 페이지·JS·헤더·인증서로 34개 항목을 판정하고, `intel.py`가 제품·버전으로 알려진 취약점(#23)·지원 종료(#25), 도메인명으로 등록 정보(#33)를 공개 자료에 묻는다. 발견은 `EngineContext`를 통해 자산 ID·가린 증거(200자 이내)로만 넘어간다.
+4. **추가 점검 (Attack 에이전트)** — LLM이 기본 결과를 보고 도구 이름과 자산 ID만 제안하면 `tools.py`의 가드 층이 허용 목록·범위·인자·예산(도구 호출 20회, 30분)을 검사한 뒤 `handlers.py`의 읽기 전용 핸들러를 실행한다. LLM에는 URL을 받는 도구가 없다.
+5. **점수·오늘 할 일** — `scoring.py`가 발견마다 4요소(노출도·악용 용이성·데이터 민감도·자산 중요도)와 신뢰도로 위험 점수를, 조직 전체의 0~100 안전 점수와 A~F 등급을, "고치면 점수가 얼마나 오르나"로 오늘 할 일 3가지를 계산한다. LLM은 관여하지 않는다.
+6. **조치 가이드 (Defense 에이전트)** — LLM이 조회 도구로 근거를 읽고 항목마다 발견 ID를 붙여 제출하면, 실제 발견과 연결되지 않은 문장은 버린다. LLM이 없으면 항목별 기본 가이드를 쓴다.
+7. **기록·재점검** — 결과는 `store.py`(SQLite)에 남고, 재점검하면 이전 점검과의 변화(새 자산·새 노출·점수)를 비교한다.
+
+| 모듈 | 하는 일 | 설계 문서 |
+| --- | --- | --- |
+| `main.py` · `auth.py` · `errors.py` | 엔드포인트 22개, 세션 로그인, Origin 검사, 오류 형식 | [API 명세](docs/A2D_API명세.md) |
+| `service.py` · `store.py` | 도메인·점검·발견·가이드·기록의 상태 관리와 저장 | [상세설계](docs/A2D_상세설계.md) |
+| `catalog.py` · `scoring.py` | 점검 항목 34개, 항목별 기본값, 점수 계산식 | [점검·점수 설계](docs/A2D_점검점수설계.md) |
+| `engine/base.py` | API와 엔진 사이의 약속: `Engine`·`EngineContext`·`Budget`·`RawAsset`·`RawFinding` | 상세설계 4절 |
+| `engine/net.py` · `crawl.py` · `intel.py` · `live.py` | 대상에 닿는 통로, 크롤러, 공개 자료 조회, 점검 판정 | 상세설계 1·4절 |
+| `agents/tools.py` · `handlers.py` | 에이전트별 도구 허용 목록, 가드 층, Attack 점검 핸들러 | 상세설계 4절 |
+| `target/` | 결함을 심은 가상 채용 플랫폼(app) + TLS 프록시(nginx) + 시연 DNS(CoreDNS) | [target/README.md](target/README.md) |
+| `model/` | GPU 서버에 vLLM으로 Qwen3-8B를 띄우고 SSH 터널로 붙는 스크립트 | [model/README.md](model/README.md) |
+
 ## 문서
 
 | 파일 | 내용 |
@@ -97,30 +162,44 @@ cp apps/api/.env.example apps/api/.env   # A2D_ADMIN_EMAIL, A2D_ADMIN_PASSWORD�
 
 ## 외부 자원
 
-사용한 외부 모델·오픈소스는 모두 이 표에 적는다. 새 라이브러리나 모델을 추가하는 PR은 이 표에도 한 줄을 더한다.
+사용한 외부 모델·오픈소스·공개 데이터(API)는 모두 이 표에 적는다. 새 라이브러리·모델·외부 조회를 추가하는 PR은 이 표에도 한 줄을 더한다. 버전은 `apps/web/package-lock.json`, `apps/api/requirements*.txt`, `target/app/requirements.txt`, `target/compose.yml`, `model/.env.example`에 고정한 값이다.
 
 | 자원 | 용도 | 라이선스 |
 | --- | --- | --- |
 | Qwen3-8B | Attack·Defense 에이전트 LLM | Apache 2.0 |
 | vLLM 0.31.0 | 모델 서빙 (OpenAI 호환 엔드포인트) | Apache 2.0 |
-| PyTorch 2.13.0 (vLLM 의존성) | 모델 실행 | BSD-3-Clause |
+| PyTorch (vLLM 0.31.0이 함께 설치하는 버전, 설치 시 2.13.0) | 모델 실행 | BSD-3-Clause |
 | Hugging Face Hub CLI (`hf`, vLLM 의존성) | 모델 가중치 내려받기 | Apache 2.0 |
-| uv 0.13.6 | GPU 서버 Python 가상 환경·패키지 설치 | Apache 2.0 · MIT |
-| FastAPI 0.115.6 · Uvicorn 0.34.0 | 타깃 서버 앱 | MIT · BSD-3-Clause |
-| cryptography 44.0.0 | 타깃 서버 시연 인증서 생성 | Apache 2.0 · BSD |
-| nginx 1.27.4 (Docker 이미지) | 타깃 서버 TLS 프록시 | BSD-2-Clause |
-| CoreDNS 1.11.3 (Docker 이미지) | 타깃 서버 시연 DNS | Apache 2.0 |
-| Python 3.12 slim (Docker 이미지) | 타깃 서버 실행 환경 | PSF |
-| curl 8.11.1 (Docker 이미지) | 타깃 서버 응답 확인(`demo.sh check`) | curl 라이선스(MIT 계열) |
-| FastAPI 0.115.6 · Uvicorn 0.34.0 | A2D 백엔드 API | MIT · BSD-3-Clause |
-| httpx 0.28.1 | A2D 백엔드 LLM 상태 확인 | BSD-3-Clause |
-| dnspython 2.7.0 | A2D 백엔드 DNS TXT 소유권 확인 | ISC |
+| uv 0.13.6 | GPU 서버 Python 3.12 가상 환경·패키지 설치 | Apache 2.0 · MIT |
+| FastAPI 0.115.6 · Uvicorn 0.34.0 | A2D 백엔드 API, 타깃 서버 앱 | MIT · BSD-3-Clause |
+| httpx 0.28.1 | A2D 백엔드 HTTP 클라이언트: 읽기 전용 점검·크롤링, 공개 자료 조회, LLM 호출 | BSD-3-Clause |
+| dnspython 2.7.0 | A2D 백엔드 DNS: TXT 소유권 확인, 하위 도메인 찾기(#1), 점검 DNS 고정, SPF·DMARC(#32) | ISC |
+| cryptography 44.0.0 | A2D 백엔드 TLS 인증서 해석(#28), 타깃 서버 시연 인증서 생성 | Apache 2.0 · BSD |
+| certifi 2024.12.14 | A2D 백엔드 HTTPS 검증 CA 묶음(httpx가 사용) | MPL-2.0 |
 | bcrypt 4.2.1 | A2D 백엔드 비밀번호 해시 | Apache 2.0 |
-| pytest 8.3.4 | A2D 백엔드 테스트 | MIT |
+| pytest 8.3.4 | A2D 백엔드 테스트(개발용) | MIT |
+| Python 3.12.8 slim (Docker 이미지) | A2D 백엔드·타깃 서버 실행 환경 | PSF |
+| nginx 1.27.4-alpine (Docker 이미지) | 타깃 서버 TLS 프록시 | BSD-2-Clause |
+| CoreDNS 1.11.3 (Docker 이미지) | 타깃 서버 시연 DNS | Apache 2.0 |
+| curl 8.11.1 (Docker 이미지) | 타깃 서버 응답 확인(`demo.sh check`) | curl 라이선스(MIT 계열) |
 | React 19.3.1 · Vite 8.3.5 · TypeScript 7.0.2 | 프런트엔드 화면과 개발 서버 | MIT · MIT · Apache 2.0 |
-| [SEED Design](https://github.com/daangn/seed-design) (@seed-design/react 3.1.0 · css 3.1.0 · vite-plugin 2.1.1 · cli 1.7.3) | 프런트엔드 디자인 시스템(주식회사 당근마켓). UI 스니펫을 `apps/web/seed-design/`에 복사해 쓰고 LICENSE·NOTICE를 함께 둠. 브랜드 색은 A2D 색으로 덮어쓰고 당근 브랜드 리소스는 쓰지 않음 | Apache 2.0 |
+| [SEED Design](https://github.com/daangn/seed-design) (@seed-design/react 3.1.0 · css 3.1.0 · vite-plugin 2.1.1) | 프런트엔드 디자인 시스템(주식회사 당근마켓). UI 스니펫을 CLI(`npx @seed-design/cli`, 복사 시점 1.7.3)로 `apps/web/seed-design/`에 복사해 쓰고 LICENSE·NOTICE를 함께 둠. 브랜드 색은 A2D 색으로 덮어쓰고 당근 브랜드 리소스는 쓰지 않음 | Apache 2.0 |
 | @karrotmarket/react-monochrome-icon 1.32.0 | 프런트엔드 아이콘(SEED 아이콘 세트) | Apache 2.0 |
 | React Router 7.18.5 | 프런트엔드 화면 이동 | MIT |
 | Motion 14.9.0 | 프런트엔드 화면 전환·숫자 애니메이션 | MIT |
+| clsx 2.1.1 | 프런트엔드 className 결합(SEED 복사 스니펫이 사용) | MIT |
 | Pretendard 1.3.9 | 프런트엔드 글꼴(오프라인용으로 패키지에 포함) | OFL-1.1 |
-| Vitest 5.0.5 · jsdom 30.1.3 · Testing Library | 프런트엔드 테스트(개발용) | MIT |
+| Vitest 5.0.5 · jsdom 30.1.3 · Testing Library (jest-dom 7.0.1 · react 16.3.3 · user-event 14.6.8) | 프런트엔드 테스트(개발용) | MIT |
+| oxlint 1.90.0 · @vitejs/plugin-react 6.1.2 · @types/node·react·react-dom | 프런트엔드 린트·빌드 플러그인·타입 정의(개발용) | MIT |
+
+### 공개 데이터·API
+
+점검 엔진이 점검 중에 묻는 공개 자료다. 대상 서버의 응답이나 개인정보는 보내지 않고, 제품·버전 문자열(#23·#25)과 공개 도메인명(#5·#33)만 묻는다. 모든 요청에 A2D 점검임을 밝히는 User-Agent를 붙이고(`apps/api/a2d/engine/net.py`), 조회에 실패하면 "모름"으로 두고 보고하지 않는다(`apps/api/a2d/engine/intel.py`).
+
+| 자원 | 용도 | 라이선스·조건 |
+| --- | --- | --- |
+| [crt.sh](https://crt.sh) (Sectigo 공개 인증서 투명성 로그) | #5 인증서 발급 기록으로 단어 목록에 없는 하위 도메인 찾기. 점검당 1회 | 무료 공개 서비스. 별도 라이선스 없음, 이용 제한을 지킨다 |
+| [NVD CVE API 2.0](https://nvd.nist.gov/developers/vulnerabilities) (NIST) | #23 알려진 취약점·CVSS. 선택 사항 `A2D_NVD_API_KEY` | 미국 정부 공개 자료. API 이용 조건에 따라 고지한다: "This product uses the NVD API but is not endorsed or certified by the NVD." |
+| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) 카탈로그 | #23 실제 악용이 확인된 취약점 | 미국 정부 공개 자료 |
+| [endoflife.date](https://endoflife.date) API v1 | #25 지원 종료 일정 | MIT |
+| [IANA RDAP 부트스트랩](https://data.iana.org/rdap/dns.json) · 각 레지스트리 RDAP 서버 | #33 도메인 만료일·이전 잠금 | 공개 |
